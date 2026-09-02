@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bomb Defuse — Can You Cut the Right Wire?</title>
+<meta name="description" content="Defuse increasingly difficult bombs, build streaks, unlock upgrades, use powers, and conquer the daily challenge.">
+<meta name="theme-color" content="#08090d">
+<meta name="color-scheme" content="dark">
+
+<!-- PWA & Mobile Web App Meta -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Bomb Defuse">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="apple-touch-icon" href="icons/icon-192.svg">
+
+<!-- Open Graph / Social Meta -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Bomb Defuse — Can You Cut the Right Wire?">
+<meta property="og:description" content="Fast-paced bomb defusing hyper-casual game. Read the rule, cut the right wire, and survive the countdown!">
+<meta property="og:image" content="icons/icon-512.svg">
+<meta property="og:url" content="./">
+
+<!-- Twitter Meta -->
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Bomb Defuse — Can You Cut the Right Wire?">
+<meta name="twitter:description" content="Fast-paced bomb defusing hyper-casual game. Defuse bombs, build streaks, and conquer the daily challenge!">
+<meta name="twitter:image" content="icons/icon-512.svg">
+
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ================= MENU SCREEN ================= -->
+  <section id="screen-menu" class="screen active" aria-labelledby="menu-title">
+    <div class="menu-inner">
+      <!-- Player Account Header Bar -->
+      <div class="menu-account-bar" id="menu-account-bar" role="region" aria-label="Player account summary">
+        <button id="btn-menu-profile" class="account-badge-btn" type="button" aria-label="View Player Profile">
+          <span class="account-avatar-icon" id="menu-avatar-icon" aria-hidden="true">💣</span>
+          <div class="account-badge-info">
+            <span class="account-name" id="menu-display-name">Guest</span>
+            <span class="account-status" id="menu-account-status">DEVICE SAVE · ONLINE</span>
+          </div>
+        </button>
+        <button id="btn-menu-auth" class="btn btn-tiny btn-auth" type="button" aria-label="Sign in or create account">ACCOUNT</button>
+      </div>
+
+      <div class="guest-notice-banner" id="guest-notice-banner">
+        <span>🎮 Playing as Guest · Progress is saved on this device</span>
+      </div>
+
+      <h1 class="title" id="menu-title">💣 BOMB DEFUSE</h1>
+      <p class="subtitle">READ THE RULE. CUT THE RIGHT WIRE. DON'T EXPLODE.</p>
+
+      <button id="btn-play" class="btn btn-primary" aria-label="Start Game">PLAY AS GUEST</button>
+
+      <!-- Daily Challenge Card -->
+      <div class="daily-card" id="daily-card" role="region" aria-label="Daily challenge">
+        <div class="daily-card-header">
+          <div class="daily-card-title-wrap">
+            <span class="daily-badge">DAILY CHALLENGE</span>
+            <span class="daily-day-label" id="daily-day-label">DAY 1</span>
+          </div>
+          <div class="daily-status-indicator" id="daily-status-indicator">
+            <span class="daily-status-dot" aria-hidden="true">●</span>
+            <span class="daily-status-text" id="daily-status-text">READY</span>
+          </div>
+        </div>
+        <div class="daily-card-body">
+          <div class="daily-card-info">
+            <span class="daily-theme-text" id="daily-theme-text">MASTER TEST</span>
+            <span class="daily-bomb-count">🔥 7 BOMBS</span>
+          </div>
+          <button id="btn-daily-play" class="btn btn-daily" aria-label="Play Daily Challenge">PLAY DAILY</button>
+        </div>
+      </div>
+
+      <div class="menu-action-grid">
+        <button id="btn-daily-goals" class="btn btn-secondary btn-with-badge" aria-label="View Daily Goals">
+          <span>DAILY GOALS</span>
+          <span class="ach-badge goals-badge" id="menu-goals-badge">3</span>
+        </button>
+        <button id="btn-achievements" class="btn btn-secondary btn-with-badge" aria-label="View Achievements">
+          <span>ACHIEVEMENTS</span>
+          <span class="ach-badge" id="menu-achievements-badge">0 / 23</span>
+        </button>
+      </div>
+
+      <div class="menu-action-grid">
+        <button id="btn-stats" class="btn btn-secondary" aria-label="View Career Statistics">CAREER STATS</button>
+        <button id="btn-shop" class="btn btn-secondary" aria-label="Open Shop">SHOP</button>
+      </div>
+
+      <button id="btn-sound-menu" class="btn btn-ghost sound-btn" aria-label="Toggle Sound Effects">🔊 SOUND ON</button>
+      <button id="btn-install" class="btn btn-ghost install-btn" style="display: none;" aria-label="Install Bomb Defuse as an App">⬇ INSTALL APP</button>
+
+      <div class="coin-balance menu-coin-balance" aria-label="Current coins balance">
+        <span class="coin-icon" aria-hidden="true">◆</span>
+        <span id="menu-coins">0</span>
+        <span class="coin-label">COINS</span>
+      </div>
+
+      <div class="stat-row">
+        <div class="stat-box">
+          <span class="stat-label">BEST SCORE</span>
+          <span class="stat-value" id="menu-best-score">0</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">BEST STREAK</span>
+          <span class="stat-value" id="menu-best-streak">0</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= FIRST-TIME TUTORIAL MODAL ================= -->
+  <section id="screen-tutorial" class="screen overlay-screen" aria-labelledby="tutorial-heading" role="dialog" aria-modal="true">
+    <div class="panel tutorial-panel">
+      <div class="tutorial-header">
+        <span class="tutorial-badge">TRAINING PROTOCOL</span>
+        <h2 id="tutorial-heading" class="tutorial-title">DEFUSAL 101</h2>
+        <div class="tutorial-step-dots" id="tutorial-dots" aria-label="Tutorial step progress">
+          <span class="t-dot active" data-step="1"></span>
+          <span class="t-dot" data-step="2"></span>
+          <span class="t-dot" data-step="3"></span>
+        </div>
+      </div>
+
+      <!-- Step 1: Read the Rule -->
+      <div class="tutorial-step-content" id="tutorial-step-1">
+        <div class="tutorial-visual-card">
+          <div class="tutorial-visual-tag">STEP 1: INSTRUCTION</div>
+          <div class="tutorial-instruction-box">
+            <span class="tutorial-inst-icon">📋</span>
+            <span class="tutorial-inst-text">CUT THE BLUE WIRE</span>
+          </div>
+        </div>
+        <h3 class="tutorial-step-title">READ THE RULE</h3>
+        <p class="tutorial-step-desc">Each bomb displays a specific directive. Read carefully: rules test color, position, wire length, relations, or memory!</p>
+      </div>
+
+      <!-- Step 2: Find the Match -->
+      <div class="tutorial-step-content" id="tutorial-step-2" style="display: none;">
+        <div class="tutorial-visual-card">
+          <div class="tutorial-visual-tag">STEP 2: IDENTIFY WIRE</div>
+          <div class="tutorial-wires-preview">
+            <div class="t-wire t-wire-red"><span>1</span></div>
+            <div class="t-wire t-wire-blue highlight"><span>2 ✓</span></div>
+            <div class="t-wire t-wire-green"><span>3</span></div>
+            <div class="t-wire t-wire-yellow"><span>4</span></div>
+          </div>
+        </div>
+        <h3 class="tutorial-step-title">FIND THE MATCH</h3>
+        <p class="tutorial-step-desc">Locate the correct wire matching the rule. Tap or click directly on the wire to sever it.</p>
+      </div>
+
+      <!-- Step 3: Defuse in Time -->
+      <div class="tutorial-step-content" id="tutorial-step-3" style="display: none;">
+        <div class="tutorial-visual-card">
+          <div class="tutorial-visual-tag">STEP 3: BEAT THE CLOCK</div>
+          <div class="tutorial-timer-preview">
+            <div class="tutorial-timer-num">08.5s</div>
+            <div class="tutorial-timer-bar"><div class="tutorial-timer-fill"></div></div>
+          </div>
+        </div>
+        <h3 class="tutorial-step-title">DEFUSE IN TIME</h3>
+        <p class="tutorial-step-desc">Cut the wire before the countdown hits zero. Faster defusals award big speed bonuses and coin multipliers!</p>
+      </div>
+
+      <div class="tutorial-actions">
+        <button id="btn-tutorial-next" class="btn btn-primary">NEXT</button>
+        <button id="btn-tutorial-skip" class="btn btn-ghost">SKIP TUTORIAL</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= GAME SCREEN ================= -->
+  <section id="screen-game" class="screen" aria-label="Active Bomb Defusal">
+    <!-- Daily Challenge Banner (visible only during daily mode) -->
+    <div class="daily-hud-banner" id="daily-hud-banner" style="display: none;" aria-label="Daily challenge progress banner">
+      <div class="daily-hud-info">
+        <span class="daily-hud-tag">DAILY</span>
+        <span class="daily-hud-day" id="daily-hud-day">DAY 1</span>
+      </div>
+      <div class="daily-progress-tracker" id="daily-progress-tracker" aria-label="Daily challenge progression">
+        <span class="daily-dot" data-step="1"></span>
+        <span class="daily-dot" data-step="2"></span>
+        <span class="daily-dot" data-step="3"></span>
+        <span class="daily-dot" data-step="4"></span>
+        <span class="daily-dot" data-step="5"></span>
+        <span class="daily-dot" data-step="6"></span>
+        <span class="daily-dot" data-step="7"></span>
+      </div>
+      <div class="daily-hud-step" id="daily-hud-step">1 / 7</div>
+    </div>
+
+    <div class="hud" role="region" aria-label="Game heads up display">
+      <div class="hud-item hud-left">
+        <span class="hud-label" id="hud-score-label">SCORE</span>
+        <span class="hud-value" id="hud-score">0</span>
+      </div>
+      <div class="hud-item hud-center">
+        <span class="hud-label" id="hud-bomb-label">BOMB 1</span>
+        <span class="hud-streak" id="hud-streak" aria-label="Current streak">🔥 0</span>
+      </div>
+      <div class="hud-item hud-right">
+        <span class="hud-label" id="hud-best-label">BEST</span>
+        <span class="hud-value" id="hud-best">0</span>
+        <span class="hud-coins" aria-label="Coins balance"><span class="coin-icon" aria-hidden="true">◆</span> <span id="hud-coins">0</span></span>
+      </div>
+    </div>
+
+    <button id="btn-pause" class="icon-btn" aria-label="Pause game" title="Pause">❚❚</button>
+
+    <div class="timer-wrap" role="timer" aria-live="off">
+      <div class="timer-value" id="timer-value">10.0</div>
+      <div class="timer-bar-track">
+        <div class="timer-bar-fill" id="timer-bar-fill"></div>
+      </div>
+    </div>
+
+    <div class="instruction" id="instruction" role="alert" aria-live="assertive">CUT THE BLUE WIRE</div>
+
+    <div class="power-bar" id="power-bar" role="toolbar" aria-label="Active powers">
+      <button id="btn-power-scanner" class="power-btn" data-power="scanner" type="button" aria-label="Scanner power: Reveals 1 wrong wire">
+        <span class="power-icon" aria-hidden="true">🔍</span>
+        <span class="power-label">SCAN</span>
+        <span class="power-badge" id="badge-scanner">0</span>
+      </button>
+      <button id="btn-power-timeFreeze" class="power-btn" data-power="timeFreeze" type="button" aria-label="Time Freeze power: Freezes timer for 3 seconds">
+        <span class="power-icon" aria-hidden="true">❄</span>
+        <span class="power-label">FREEZE</span>
+        <span class="power-badge" id="badge-timeFreeze">0</span>
+      </button>
+      <button id="btn-power-secondChance" class="power-btn" data-power="secondChance" type="button" aria-label="Second Chance power: Protects against 1 wrong cut">
+        <span class="power-icon" aria-hidden="true">🛡</span>
+        <span class="power-label">CHANCE</span>
+        <span class="power-badge" id="badge-secondChance">0</span>
+      </button>
+    </div>
+
+    <div class="bomb-stage" id="bomb-stage">
+      <div class="bomb" id="bomb" data-status="armed">
+        <div class="bomb-rim" aria-hidden="true"></div>
+        <div class="bomb-panel-line bomb-panel-line-a" aria-hidden="true"></div>
+        <div class="bomb-panel-line bomb-panel-line-b" aria-hidden="true"></div>
+        <div class="bomb-led" id="bomb-led" aria-hidden="true"></div>
+        <div class="bomb-status-led" aria-hidden="true"></div>
+        <div class="bomb-screen">
+          <span id="bomb-screen-text">ARMED</span>
+        </div>
+        <div class="bomb-screw bomb-screw-tl" aria-hidden="true"></div>
+        <div class="bomb-screw bomb-screw-tr" aria-hidden="true"></div>
+        <div class="bomb-screw bomb-screw-bl" aria-hidden="true"></div>
+        <div class="bomb-screw bomb-screw-br" aria-hidden="true"></div>
+        <div class="bomb-warning" aria-hidden="true">⚠</div>
+        <div class="bomb-circuit bomb-circuit-left" aria-hidden="true"></div>
+        <div class="bomb-circuit bomb-circuit-right" aria-hidden="true"></div>
+        <div class="bomb-danger-label" aria-hidden="true">DANGER</div>
+        <div class="wires" id="wires-container" role="group" aria-label="Bomb wire assembly"></div>
+      </div>
+    </div>
+
+    <div id="particle-layer" aria-hidden="true"></div>
+    <div id="flash-overlay" aria-hidden="true"></div>
+
+    <!-- floating feedback text -->
+    <div id="feedback-layer" aria-hidden="true"></div>
+  </section>
+
+  <!-- ================= PAUSE SCREEN ================= -->
+  <section id="screen-pause" class="screen overlay-screen" aria-labelledby="pause-title" role="dialog" aria-modal="true">
+    <div class="panel">
+      <h2 id="pause-title">PAUSED</h2>
+      <div class="setting-row">
+        <span>SOUND EFFECTS</span>
+        <button id="btn-sound-pause" class="toggle-btn" aria-label="Toggle sound effects">ON</button>
+      </div>
+      <button id="btn-resume" class="btn btn-primary">RESUME</button>
+      <button id="btn-restart-pause" class="btn btn-secondary">RESTART</button>
+      <button id="btn-menu-pause" class="btn btn-ghost">MENU</button>
+    </div>
+  </section>
+
+  <!-- ================= NORMAL RESULT SCREEN ================= -->
+  <section id="screen-result" class="screen" aria-labelledby="result-title">
+    <div class="menu-inner result-inner">
+      <h1 class="title result-title" id="result-title">💥 BOOM!</h1>
+      <p class="result-message" id="result-message">NICE RUN!</p>
+
+      <div class="result-comparison-box" id="result-comparison-box">
+        <span class="result-comparison-icon" aria-hidden="true">💡</span>
+        <span class="result-comparison-text" id="result-comparison-text">3 MORE BOMBS TO NEXT MILESTONE!</span>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-box">
+          <span class="stat-label">SCORE</span>
+          <span class="stat-value" id="result-score">0</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">BEST</span>
+          <span class="stat-value" id="result-best">0</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">BOMBS DEFUSED</span>
+          <span class="stat-value" id="result-bombs">0</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">BEST STREAK</span>
+          <span class="stat-value" id="result-streak">0</span>
+        </div>
+        <div class="stat-box coin-stat">
+          <span class="stat-label">COINS EARNED</span>
+          <span class="stat-value" id="result-coins-earned">+0</span>
+        </div>
+        <div class="stat-box coin-stat">
+          <span class="stat-label">CURRENT COINS</span>
+          <span class="stat-value" id="result-current-coins">0</span>
+        </div>
+      </div>
+
+      <div class="result-actions-grid">
+        <button id="btn-play-again" class="btn btn-primary">PLAY AGAIN</button>
+        <button id="btn-share-result" class="btn btn-secondary btn-share" aria-label="Share result to friends">📤 SHARE RESULT</button>
+      </div>
+      <div class="result-secondary-actions">
+        <button id="btn-result-shop" class="btn btn-ghost">SHOP</button>
+        <button id="btn-menu-result" class="btn btn-ghost">MENU</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= DAILY RESULT SCREEN ================= -->
+  <section id="screen-daily-result" class="screen" aria-labelledby="daily-result-title">
+    <div class="menu-inner daily-result-inner">
+      <div class="daily-result-badge" id="daily-result-badge">DAILY CHALLENGE</div>
+      <h1 class="title daily-result-title" id="daily-result-title">DAILY COMPLETE</h1>
+      <div class="daily-result-icon" id="daily-result-icon">✓</div>
+      <p class="daily-result-message" id="daily-result-message">DAY 1 MASTERED!</p>
+
+      <div class="stat-grid daily-stat-grid">
+        <div class="stat-box">
+          <span class="stat-label">SCORE</span>
+          <span class="stat-value" id="daily-result-score">0</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">BEST DAILY</span>
+          <span class="stat-value" id="daily-result-best">0</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">BOMBS DEFUSED</span>
+          <span class="stat-value" id="daily-result-bombs">7 / 7</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">TIME BONUS</span>
+          <span class="stat-value" id="daily-result-time-bonus">+0</span>
+        </div>
+        <div class="stat-box coin-stat daily-reward-stat" style="grid-column: span 2;">
+          <span class="stat-label">DAILY REWARD</span>
+          <span class="stat-value" id="daily-result-reward">+0 COINS</span>
+        </div>
+      </div>
+
+      <div class="daily-reward-breakdown" id="daily-reward-breakdown"></div>
+
+      <div class="result-actions-grid">
+        <button id="btn-daily-play-normal" class="btn btn-primary">PLAY NORMAL</button>
+        <button id="btn-daily-share" class="btn btn-secondary btn-share" aria-label="Share daily challenge score">📤 SHARE SCORE</button>
+      </div>
+      <button id="btn-daily-menu" class="btn btn-ghost">MENU</button>
+    </div>
+  </section>
+
+  <!-- ================= CAREER STATS SCREEN ================= -->
+  <section id="screen-stats" class="screen" aria-labelledby="stats-title">
+    <div class="menu-inner stats-inner">
+      <h1 class="title" id="stats-title">CAREER STATS</h1>
+      
+      <div class="stats-container">
+        <!-- CAREER SECTION -->
+        <div class="stats-section">
+          <div class="stats-section-title">CAREER PERFORMANCE</div>
+          <div class="stat-grid stats-section-grid">
+            <div class="stat-box">
+              <span class="stat-label">DEFUSED</span>
+              <span class="stat-value highlight" id="stat-bombs-defused">0</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">FAILED</span>
+              <span class="stat-value" id="stat-bombs-failed">0</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">SUCCESS RATE</span>
+              <span class="stat-value" id="stat-success-rate">0%</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">TOTAL SCORE</span>
+              <span class="stat-value" id="stat-total-score">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- SKILL SECTION -->
+        <div class="stats-section">
+          <div class="stats-section-title">SKILL & MASTERY</div>
+          <div class="stat-grid stats-section-grid">
+            <div class="stat-box">
+              <span class="stat-label">BEST STREAK</span>
+              <span class="stat-value highlight" id="stat-best-streak">0</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">FASTEST DEFUSE</span>
+              <span class="stat-value" id="stat-fastest-defuse">--</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">RULES MASTERED</span>
+              <span class="stat-value" id="stat-rules-mastered">0 / 6</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">DAILIES WON</span>
+              <span class="stat-value" id="stat-dailies-won">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ECONOMY SECTION -->
+        <div class="stats-section">
+          <div class="stats-section-title">ECONOMY & GEAR</div>
+          <div class="stat-grid stats-section-grid">
+            <div class="stat-box coin-stat">
+              <span class="stat-label">COINS EARNED</span>
+              <span class="stat-value" id="stat-coins-earned">0</span>
+            </div>
+            <div class="stat-box coin-stat">
+              <span class="stat-label">COINS SPENT</span>
+              <span class="stat-value" id="stat-coins-spent">0</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">POWERS USED</span>
+              <span class="stat-value" id="stat-powers-used">0</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">UPGRADES BOUGHT</span>
+              <span class="stat-value" id="stat-upgrades-bought">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- TIME SECTION -->
+        <div class="stats-section">
+          <div class="stats-section-title">MISSION TIME</div>
+          <div class="stat-grid stats-section-grid" style="grid-template-columns: 1fr;">
+            <div class="stat-box">
+              <span class="stat-label">TOTAL PLAY TIME</span>
+              <span class="stat-value" id="stat-play-time">0m 0s</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button id="btn-back-stats" class="btn btn-ghost">BACK</button>
+    </div>
+  </section>
+
+  <!-- ================= DAILY GOALS SCREEN ================= -->
+  <section id="screen-daily-goals" class="screen" aria-labelledby="goals-title">
+    <div class="menu-inner goals-inner">
+      <div class="goals-header-wrap">
+        <h1 class="title" id="goals-title">DAILY GOALS</h1>
+      </div>
+      <p class="goals-subtitle">Complete daily missions to earn bonus coin payouts.</p>
+
+      <div class="daily-goals-list" id="daily-goals-list" role="list">
+        <!-- 3 goals dynamically populated -->
+      </div>
+
+      <button id="btn-back-daily-goals" class="btn btn-ghost">BACK</button>
+    </div>
+  </section>
+
+  <!-- ================= DAILY LOGIN REWARD POPUP ================= -->
+  <section id="screen-login-reward" class="screen overlay-screen" aria-labelledby="login-reward-title" role="dialog" aria-modal="true">
+    <div class="panel login-reward-panel">
+      <div class="login-reward-header">
+        <span class="login-reward-badge">DAILY SUPPLY CRATE</span>
+        <h2 id="login-reward-title" class="login-reward-title">7-DAY SUPPLY DROP</h2>
+        <p class="login-reward-subtitle">Return daily to collect increasingly valuable coin bounties!</p>
+      </div>
+
+      <div class="login-days-grid" id="login-days-grid">
+        <!-- Day 1-7 rendered dynamically -->
+      </div>
+
+      <div class="login-reward-actions">
+        <button id="btn-claim-login-reward" class="btn btn-primary">CLAIM REWARD</button>
+        <button id="btn-close-login-reward" class="btn btn-ghost">CLOSE</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ACHIEVEMENTS SCREEN ================= -->
+  <section id="screen-achievements" class="screen" aria-labelledby="ach-title">
+    <div class="menu-inner achievement-inner">
+      <h1 class="title" id="ach-title">ACHIEVEMENTS</h1>
+      <div class="ach-summary" aria-label="Achievements progress">
+        <div class="ach-summary-info">
+          <span class="ach-summary-label">TOTAL UNLOCKED</span>
+          <span class="ach-summary-count" id="ach-total-count">0 / 23</span>
+        </div>
+        <div class="ach-summary-track">
+          <div class="ach-summary-fill" id="ach-summary-fill" style="width: 0%;"></div>
+        </div>
+      </div>
+
+      <div class="ach-filter-pills" id="ach-filter-pills" role="tablist" aria-label="Filter achievements by category">
+        <button class="ach-filter-pill active" data-category="ALL" role="tab" aria-selected="true">ALL</button>
+        <button class="ach-filter-pill" data-category="GAMEPLAY" role="tab" aria-selected="false">GAMEPLAY</button>
+        <button class="ach-filter-pill" data-category="SPEED" role="tab" aria-selected="false">SPEED</button>
+        <button class="ach-filter-pill" data-category="STREAK" role="tab" aria-selected="false">STREAK</button>
+        <button class="ach-filter-pill" data-category="MASTERY" role="tab" aria-selected="false">MASTERY</button>
+        <button class="ach-filter-pill" data-category="ECONOMY" role="tab" aria-selected="false">ECONOMY</button>
+        <button class="ach-filter-pill" data-category="POWERS" role="tab" aria-selected="false">POWERS</button>
+        <button class="ach-filter-pill" data-category="DAILY" role="tab" aria-selected="false">DAILY</button>
+      </div>
+
+      <div id="achievement-list" class="achievement-list" role="list"></div>
+
+      <button id="btn-back-achievements" class="btn btn-ghost">BACK</button>
+    </div>
+  </section>
+
+  <!-- ================= SHOP SCREEN ================= -->
+  <section id="screen-shop" class="screen" aria-labelledby="shop-title">
+    <div class="menu-inner shop-inner">
+      <h1 class="title" id="shop-title">SHOP</h1>
+      <div class="coin-balance" aria-label="Current coins balance">
+        <span class="coin-icon" aria-hidden="true">◆</span>
+        <span id="shop-coins">0</span>
+        <span class="coin-label">COINS</span>
+      </div>
+      <div class="shop-category" id="shop-cat-upgrades">UPGRADES</div>
+      <div id="upgrade-list" class="upgrade-list" role="region" aria-labelledby="shop-cat-upgrades"></div>
+      <div class="shop-category" id="shop-cat-powers">POWERS</div>
+      <div id="power-list" class="power-list" role="region" aria-labelledby="shop-cat-powers"></div>
+      <button id="btn-back-shop" class="btn btn-ghost">BACK</button>
+      <button id="btn-reset-progress" class="text-btn">RESET PROGRESS</button>
+    </div>
+  </section>
+
+  <!-- ================= RESET CONFIRMATION ================= -->
+  <section id="screen-reset" class="screen overlay-screen" aria-labelledby="reset-title" role="dialog" aria-modal="true">
+    <div class="panel reset-panel">
+      <h2 id="reset-title">RESET ALL PROGRESS?</h2>
+      <p>This permanently removes all coins, upgrades, powers, achievements, tutorial completion, and best records.</p>
+      <button id="btn-confirm-reset" class="btn btn-secondary">CONFIRM RESET</button>
+      <button id="btn-cancel-reset" class="btn btn-ghost">CANCEL</button>
+    </div>
+  </section>
+
+  <!-- ================= LOGIN SCREEN ================= -->
+  <section id="screen-login" class="screen" aria-labelledby="login-title">
+    <div class="menu-inner auth-inner">
+      <div class="auth-brand-badge">PLAYER ACCOUNT</div>
+      <h1 class="title auth-title" id="login-title">SIGN IN</h1>
+      <p class="auth-subtitle">Connect your account to synchronize your profile and career statistics across devices.</p>
+
+      <div class="auth-providers-list" id="auth-providers-container">
+        <!-- Google -->
+        <button id="btn-auth-google" class="btn auth-btn auth-btn-google" type="button" aria-label="Continue with Google">
+          <span class="auth-btn-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.4 1 3.5 3.6 1.6 7.4l3.7 2.9C6.2 7.4 8.9 5 12 5z"/><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z"/><path fill="#FBBC05" d="M5.3 14.7c-.2-.7-.4-1.4-.4-2.2s.2-1.5.4-2.2L1.6 7.4C.6 9.4 0 11.6 0 14s.6 4.6 1.6 6.6l3.7-2.9z"/><path fill="#34A853" d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3.1 0-5.8-2.4-6.7-5.3L1.6 16c1.9 3.8 5.8 7 10.4 7z"/></svg>
+          </span>
+          <span class="auth-btn-text">CONTINUE WITH GOOGLE</span>
+        </button>
+
+        <!-- Facebook -->
+        <button id="btn-auth-facebook" class="btn auth-btn auth-btn-facebook" type="button" aria-label="Continue with Facebook">
+          <span class="auth-btn-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="#1877F2"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+          </span>
+          <span class="auth-btn-text">CONTINUE WITH FACEBOOK</span>
+        </button>
+
+        <!-- Email -->
+        <button id="btn-auth-email" class="btn auth-btn auth-btn-email" type="button" aria-label="Continue with Email">
+          <span class="auth-btn-icon" aria-hidden="true">✉</span>
+          <span class="auth-btn-text">SIGN IN WITH EMAIL</span>
+        </button>
+      </div>
+
+      <!-- Email Login Inline Form -->
+      <form id="form-login-email" class="auth-form" onsubmit="return false;" style="display: none;">
+        <div class="auth-input-group">
+          <label for="login-email">EMAIL ADDRESS</label>
+          <input type="email" id="login-email" class="auth-input" placeholder="operator@example.com" autocomplete="email" required>
+        </div>
+
+        <div class="auth-input-group">
+          <label for="login-password">PASSWORD</label>
+          <input type="password" id="login-password" class="auth-input" placeholder="••••••••" autocomplete="current-password" required>
+        </div>
+
+        <div class="auth-error-msg" id="login-error-msg" role="alert" style="display: none;"></div>
+
+        <button id="btn-do-login-email" class="btn btn-primary" type="submit">SIGN IN</button>
+        <button id="btn-cancel-email-login" class="btn btn-ghost" type="button">OTHER SIGN-IN METHODS</button>
+      </form>
+
+      <div class="auth-divider">
+        <span>OR</span>
+      </div>
+
+      <button id="btn-login-guest" class="btn btn-secondary" type="button" aria-label="Continue Playing as Guest">CONTINUE AS GUEST</button>
+
+      <div class="auth-footer-links">
+        <p>Don't have an account? <button id="btn-goto-register" class="link-btn" type="button">CREATE ACCOUNT</button></p>
+        <button id="btn-goto-forgot" class="link-btn text-muted" type="button">Forgot password?</button>
+      </div>
+
+      <button id="btn-back-login" class="btn btn-ghost" type="button">BACK TO MENU</button>
+    </div>
+  </section>
+
+  <!-- ================= REGISTER SCREEN ================= -->
+  <section id="screen-register" class="screen" aria-labelledby="register-title">
+    <div class="menu-inner auth-inner">
+      <div class="auth-brand-badge">NEW ACCOUNT</div>
+      <h1 class="title auth-title" id="register-title">CREATE ACCOUNT</h1>
+      <p class="auth-subtitle">Save and protect your lifetime defusal statistics.</p>
+
+      <form id="form-register" class="auth-form" onsubmit="return false;">
+        <div class="auth-input-group">
+          <label for="register-display-name">DISPLAY NAME</label>
+          <input type="text" id="register-display-name" class="auth-input" placeholder="e.g. BombMaster" maxlength="20" autocomplete="nickname" required>
+        </div>
+
+        <div class="auth-input-group">
+          <label for="register-email">EMAIL ADDRESS</label>
+          <input type="email" id="register-email" class="auth-input" placeholder="operator@example.com" autocomplete="email" required>
+        </div>
+
+        <div class="auth-input-group">
+          <label for="register-password">PASSWORD</label>
+          <input type="password" id="register-password" class="auth-input" placeholder="••••••••" autocomplete="new-password" required>
+        </div>
+
+        <div class="auth-input-group">
+          <label for="register-confirm-password">CONFIRM PASSWORD</label>
+          <input type="password" id="register-confirm-password" class="auth-input" placeholder="••••••••" autocomplete="new-password" required>
+        </div>
+
+        <div class="auth-error-msg" id="register-error-msg" role="alert" style="display: none;"></div>
+
+        <button id="btn-do-register" class="btn btn-primary" type="submit">CREATE ACCOUNT</button>
+      </form>
+
+      <div class="auth-footer-links">
+        <p>Already have an account? <button id="btn-back-to-login" class="link-btn" type="button">SIGN IN</button></p>
+      </div>
+
+      <button id="btn-back-register" class="btn btn-ghost" type="button">CANCEL</button>
+    </div>
+  </section>
+
+  <!-- ================= FORGOT PASSWORD SCREEN ================= -->
+  <section id="screen-forgot-password" class="screen" aria-labelledby="forgot-title">
+    <div class="menu-inner auth-inner">
+      <div class="auth-brand-badge">ACCOUNT RECOVERY</div>
+      <h1 class="title auth-title" id="forgot-title">RESET PASSWORD</h1>
+      <p class="auth-subtitle">Enter your registered email address to receive password reset instructions.</p>
+
+      <form id="form-forgot" class="auth-form" onsubmit="return false;">
+        <div class="auth-input-group">
+          <label for="forgot-email">EMAIL ADDRESS</label>
+          <input type="email" id="forgot-email" class="auth-input" placeholder="operator@example.com" autocomplete="email" required>
+        </div>
+
+        <div class="auth-error-msg" id="forgot-error-msg" role="alert" style="display: none;"></div>
+
+        <button id="btn-do-forgot" class="btn btn-primary" type="submit">SEND RESET LINK</button>
+      </form>
+
+      <button id="btn-back-forgot" class="btn btn-ghost" type="button">BACK TO LOGIN</button>
+    </div>
+  </section>
+
+  <!-- ================= PLAYER PROFILE SCREEN ================= -->
+  <section id="screen-profile" class="screen" aria-labelledby="profile-title">
+    <div class="menu-inner profile-inner">
+      <h1 class="title" id="profile-title">PLAYER PROFILE</h1>
+
+      <div class="profile-card">
+        <div class="profile-header-wrap">
+          <div class="profile-avatar-box">
+            <span class="profile-avatar-large" id="profile-avatar-large" aria-hidden="true">💣</span>
+            <button id="btn-change-avatar" class="avatar-edit-btn" type="button" aria-label="Change Avatar">✏</button>
+          </div>
+          <div class="profile-identity">
+            <div class="profile-name-row">
+              <span class="profile-display-name" id="profile-display-name-val">Guest</span>
+              <button id="btn-edit-display-name" class="icon-edit-btn" type="button" aria-label="Edit Display Name">✏</button>
+            </div>
+            <span class="profile-provider-pill" id="profile-provider-pill">GUEST · LOCAL SAVE</span>
+          </div>
+        </div>
+
+        <div class="profile-meta-list">
+          <div class="profile-meta-item">
+            <span class="meta-label">MEMBER SINCE</span>
+            <span class="meta-val" id="profile-created-at-val">2026-08-31</span>
+          </div>
+          <div class="profile-meta-item">
+            <span class="meta-label">NETWORK STATE</span>
+            <span class="meta-val" id="profile-network-val">ONLINE</span>
+          </div>
+          <div class="profile-meta-item">
+            <span class="meta-label">SAVE STORAGE</span>
+            <span class="meta-val" id="profile-storage-val">THIS DEVICE</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Career Overview -->
+      <div class="profile-stats-summary">
+        <div class="stat-grid profile-stat-grid">
+          <div class="stat-box">
+            <span class="stat-label">DEFUSED</span>
+            <span class="stat-value highlight" id="profile-stat-defused">0</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">BEST SCORE</span>
+            <span class="stat-value" id="profile-stat-score">0</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">BEST STREAK</span>
+            <span class="stat-value" id="profile-stat-streak">0</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">DAILIES WON</span>
+            <span class="stat-value" id="profile-stat-dailies">0</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="profile-actions-wrap">
+        <button id="btn-profile-create-account" class="btn btn-secondary" type="button">CREATE CLOUD ACCOUNT</button>
+        <button id="btn-profile-settings" class="btn btn-secondary" type="button">ACCOUNT SETTINGS</button>
+        <button id="btn-back-profile" class="btn btn-ghost" type="button">BACK TO MENU</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= AVATAR PICKER MODAL ================= -->
+  <section id="screen-avatar-picker" class="screen overlay-screen" aria-labelledby="avatar-picker-title" role="dialog" aria-modal="true">
+    <div class="panel avatar-picker-panel">
+      <h2 id="avatar-picker-title">CHOOSE AVATAR</h2>
+      <p class="avatar-picker-subtitle">Select your defuser icon.</p>
+
+      <div class="avatar-grid" id="avatar-grid" role="radiogroup" aria-label="Available avatars">
+        <!-- 7 Avatars populated dynamically -->
+      </div>
+
+      <div class="avatar-picker-actions">
+        <button id="btn-save-avatar" class="btn btn-primary" type="button">SAVE AVATAR</button>
+        <button id="btn-cancel-avatar" class="btn btn-ghost" type="button">CANCEL</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ACCOUNT SETTINGS SCREEN ================= -->
+  <section id="screen-account-settings" class="screen" aria-labelledby="settings-title">
+    <div class="menu-inner settings-inner">
+      <h1 class="title" id="settings-title">ACCOUNT SETTINGS</h1>
+
+      <div class="settings-container">
+        <!-- PROFILE -->
+        <div class="settings-section">
+          <div class="settings-section-title">PROFILE</div>
+          <div class="settings-row">
+            <div class="settings-row-copy">
+              <span class="settings-row-label">DISPLAY NAME</span>
+              <span class="settings-row-val" id="settings-display-name-val">Guest</span>
+            </div>
+            <button id="btn-settings-change-name" class="btn btn-tiny btn-secondary" type="button">CHANGE</button>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-copy">
+              <span class="settings-row-label">AVATAR</span>
+              <span class="settings-row-val" id="settings-avatar-val">Bomb (💣)</span>
+            </div>
+            <button id="btn-settings-change-avatar" class="btn btn-tiny btn-secondary" type="button">CHANGE</button>
+          </div>
+        </div>
+
+        <!-- ACCOUNT STATUS -->
+        <div class="settings-section">
+          <div class="settings-section-title">ACCOUNT & CLOUD</div>
+          <div class="settings-row">
+            <div class="settings-row-copy">
+              <span class="settings-row-label">PROVIDER</span>
+              <span class="settings-row-val" id="settings-provider-val">Guest (Local Save)</span>
+            </div>
+            <span class="settings-badge" id="settings-cloud-badge">LOCAL ONLY</span>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-copy">
+              <span class="settings-row-label">STATUS</span>
+              <span class="settings-row-val" id="settings-status-val">Active</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- PRIVACY -->
+        <div class="settings-section">
+          <div class="settings-section-title">DATA PRIVACY & CONSENT</div>
+          <div class="settings-row">
+            <div class="settings-row-copy">
+              <span class="settings-row-label">ANALYTICS</span>
+              <span class="settings-row-desc">Help improve bomb generation balance (anonymous).</span>
+            </div>
+            <button id="btn-toggle-analytics" class="toggle-btn" type="button" aria-label="Toggle anonymous analytics">OFF</button>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-copy">
+              <span class="settings-row-label">PERSONALIZED ADS</span>
+              <span class="settings-row-desc">Currently disabled in release build.</span>
+            </div>
+            <button id="btn-toggle-ads" class="toggle-btn" type="button" aria-label="Toggle personalized advertising">OFF</button>
+          </div>
+        </div>
+
+        <!-- GAMEPLAY & PREFERENCES -->
+        <div class="settings-section">
+          <div class="settings-section-title">PREFERENCES</div>
+          <div class="settings-row">
+            <div class="settings-row-copy">
+              <span class="settings-row-label">SOUND EFFECTS</span>
+              <span class="settings-row-desc">Procedural Web Audio API sound effects.</span>
+            </div>
+            <button id="btn-settings-toggle-sound" class="toggle-btn" type="button" aria-label="Toggle sound effects">ON</button>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-copy">
+              <span class="settings-row-label">REDUCED MOTION</span>
+              <span class="settings-row-desc">Minimize screen shakes and flash pulses.</span>
+            </div>
+            <button id="btn-settings-toggle-motion" class="toggle-btn" type="button" aria-label="Toggle reduced motion preference">OFF</button>
+          </div>
+        </div>
+
+        <!-- DATA & ACCOUNT ACTIONS -->
+        <div class="settings-section">
+          <div class="settings-section-title">DATA MANAGEMENT</div>
+          <div class="settings-action-stack">
+            <button id="btn-export-data" class="btn btn-secondary" type="button">EXPORT MY DATA (JSON)</button>
+            <button id="btn-logout" class="btn btn-secondary" type="button">LOG OUT</button>
+            <button id="btn-delete-account" class="btn btn-danger" type="button">DELETE ACCOUNT</button>
+          </div>
+        </div>
+      </div>
+
+      <button id="btn-back-settings" class="btn btn-ghost" type="button">BACK TO PROFILE</button>
+    </div>
+  </section>
+
+  <!-- ================= DELETE ACCOUNT MODAL ================= -->
+  <section id="screen-delete-account" class="screen overlay-screen" aria-labelledby="delete-title" role="dialog" aria-modal="true">
+    <div class="panel delete-panel">
+      <h2 id="delete-title" class="danger-title">DELETE ACCOUNT?</h2>
+      <p class="delete-desc">This action will permanently remove your account records and career statistics. To confirm, please type <strong class="delete-keyword">DELETE</strong> below:</p>
+      
+      <div class="delete-input-wrap">
+        <input type="text" id="input-delete-confirm" class="auth-input delete-input" placeholder="Type DELETE to confirm" autocomplete="off">
+      </div>
+
+      <div class="delete-warning-box">
+        <span>⚠ Local device progress will be permanently erased.</span>
+      </div>
+
+      <div class="delete-actions">
+        <button id="btn-confirm-delete-account" class="btn btn-danger" type="button" disabled>PERMANENTLY DELETE</button>
+        <button id="btn-cancel-delete-account" class="btn btn-ghost" type="button">CANCEL</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= LOGOUT CONFIRMATION MODAL ================= -->
+  <section id="screen-logout-confirm" class="screen overlay-screen" aria-labelledby="logout-title" role="dialog" aria-modal="true">
+    <div class="panel logout-panel">
+      <h2 id="logout-title">LOG OUT?</h2>
+      <p>Your local guest progress will remain safely saved on this device.</p>
+      <div class="logout-actions">
+        <button id="btn-confirm-logout" class="btn btn-secondary" type="button">LOG OUT</button>
+        <button id="btn-cancel-logout" class="btn btn-ghost" type="button">CANCEL</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= SYNC CONFLICT MODAL ================= -->
+  <section id="screen-sync-conflict" class="screen overlay-screen" aria-labelledby="conflict-title" role="dialog" aria-modal="true">
+    <div class="panel conflict-panel">
+      <h2 id="conflict-title">SYNC CONFLICT</h2>
+      <p class="conflict-subtitle">We found different save data on this device and in the cloud. Which one would you like to keep?</p>
+      
+      <div class="conflict-cards-grid">
+        <!-- Local Save Card -->
+        <div class="conflict-card">
+          <span class="conflict-card-tag">THIS DEVICE</span>
+          <div class="conflict-stat-row">
+            <span>Score: <strong id="conflict-local-score">0</strong></span>
+            <span>Bombs: <strong id="conflict-local-bombs">0</strong></span>
+            <span>Coins: <strong id="conflict-local-coins">0</strong></span>
+          </div>
+          <button id="btn-choose-local-save" class="btn btn-secondary" type="button">USE THIS DEVICE</button>
+        </div>
+
+        <!-- Cloud Save Card -->
+        <div class="conflict-card">
+          <span class="conflict-card-tag">CLOUD SAVE</span>
+          <div class="conflict-stat-row">
+            <span>Score: <strong id="conflict-cloud-score">0</strong></span>
+            <span>Bombs: <strong id="conflict-cloud-bombs">0</strong></span>
+            <span>Coins: <strong id="conflict-cloud-coins">0</strong></span>
+          </div>
+          <button id="btn-choose-cloud-save" class="btn btn-primary" type="button">USE CLOUD SAVE</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- ================= ACHIEVEMENT NOTIFICATION TOAST ================= -->
+<div id="achievement-toast" class="achievement-toast" role="status" aria-live="polite">
+  <div class="ach-toast-icon" id="ach-toast-icon" aria-hidden="true">🏆</div>
+  <div class="ach-toast-copy">
+    <div class="ach-toast-tag">ACHIEVEMENT UNLOCKED</div>
+    <div class="ach-toast-name" id="ach-toast-name">FIRST BLOOD</div>
+    <div class="ach-toast-desc" id="ach-toast-desc">Defuse your first bomb.</div>
+  </div>
+  <div class="ach-toast-reward" id="ach-toast-reward">+25 ◆</div>
+</div>
+
+<div id="progress-toast" class="progress-toast" role="status" aria-live="polite"></div>
+<!-- Firebase Official SDK (Compat Layer) -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
