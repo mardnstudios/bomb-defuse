@@ -30,6 +30,15 @@ const GameConfig = {
   },
 };
 
+const WIRE_COLOR_MAP = {
+  red: "#ff4757",
+  blue: "#3a86ff",
+  green: "#2ed573",
+  yellow: "#ffa502",
+  purple: "#9b59b6",
+  orange: "#ff7f50"
+};
+
 const UpgradeDefinitions = {
   timeBuffer: { name: "TIME BUFFER", icon: "◷", description: "Adds a little breathing room to every fuse.", effect: level => `+${(level * .25).toFixed(2)}s starting time`, prices: [100, 250, 500, 900, 1500] },
   coinBoost: { name: "COIN BOOST", icon: "◆", description: "Increases coins earned from every defuse.", effect: level => `+${level * 5}% coin rewards`, prices: [100, 250, 500, 900, 1500] },
@@ -367,7 +376,7 @@ const CloudSaveManager = (() => {
   }
 
   function hasCloudSave() {
-    return false;
+    return Boolean(AuthManager?.isAuthenticated?.());
   }
 
   function createSnapshot(data) {
@@ -478,7 +487,7 @@ const CloudSaveManager = (() => {
     }
 
     profile = chosenSave;
-    SaveManager.save(profile);
+    SaveManager.save(profile, true);
     activeConflictResolution = null;
     refreshPersistentUI();
     updateMenuAccountBadge();
@@ -554,14 +563,14 @@ const CloudSaveManager = (() => {
         if (conflict.hasConflict) {
           showConflictModal(profile, cloudData, (resolvedSave) => {
             profile = resolvedSave;
-            SaveManager.save(profile);
+            SaveManager.save(profile, true);
             refreshPersistentUI();
             updateMenuAccountBadge();
           });
           return { status: "CONFLICT_MODAL_SHOWN" };
         } else {
           profile = mergeSaves(profile, cloudData);
-          SaveManager.save(profile);
+          SaveManager.save(profile, true);
           refreshPersistentUI();
           updateMenuAccountBadge();
           return { status: "MERGED" };
@@ -851,9 +860,31 @@ const SaveManager = (() => {
     return raw ? normalize(raw) : defaults();
   }
 
-  function save(data) {
+  let cloudSaveTimeout = null;
+
+  function scheduleCloudSave(saveData) {
+    if (!AuthManager?.isAuthenticated?.() || (typeof navigator !== "undefined" && !navigator.onLine)) return;
+    if (cloudSaveTimeout) clearTimeout(cloudSaveTimeout);
+    cloudSaveTimeout = setTimeout(() => {
+      CloudSaveManager.uploadSave(saveData || profile).catch(err => {
+        console.warn("[SaveManager] Debounced cloud upload error:", err);
+      });
+    }, 1500);
+  }
+
+  function save(data, immediateCloud = false) {
     const normalized = normalize(data);
     LocalSaveManager.save(normalized);
+    if (AuthManager?.isAuthenticated?.()) {
+      if (immediateCloud) {
+        if (cloudSaveTimeout) clearTimeout(cloudSaveTimeout);
+        CloudSaveManager.uploadSave(normalized).catch(err => {
+          console.warn("[SaveManager] Immediate cloud upload error:", err);
+        });
+      } else {
+        scheduleCloudSave(normalized);
+      }
+    }
   }
 
   function reset() {
@@ -1840,6 +1871,8 @@ const Timer = (() => {
     onExpired = expiredHandler;
     startedAt = performance.now();
     lastTickTime = startedAt;
+    lastRenderedTimerSec = null;
+    lastTimerAlertState = "";
     onTick(remaining, duration);
     frameId = requestAnimationFrame(tick);
   }
@@ -2512,7 +2545,7 @@ const AchievementUI = (() => {
     const total = Object.keys(AchievementDefinitions).length;
     const unlockedCount = profile.achievements.unlocked.length;
     if (el.menuAchievementsBadge) {
-      el.menuAchievementsBadge.textContent = `${unlockedCount} / ${total}`;
+      el.menuAchievementsBadge.innerHTML = `<span class="ach-badge-val">${unlockedCount}</span><span class="ach-badge-total">/${total}</span>`;
     }
     if (el.achTotalCount) {
       el.achTotalCount.textContent = `${unlockedCount} / ${total}`;
@@ -3596,11 +3629,19 @@ const AuthManager = (() => {
         }
       }
 
-      SaveManager.save(profile);
+      SaveManager.save(profile, true);
+      refreshPersistentUI();
       updateMenuAccountBadge();
       updateNetworkBadge();
       if (typeof CloudSaveManager !== "undefined" && typeof CloudSaveManager.sync === "function") {
         CloudSaveManager.sync().catch((err) => { console.warn("[AuthManager] CloudSave sync error:", err); });
+      }
+
+      // Automatically navigate from auth screens to main menu
+      if (screens["login"]?.classList.contains("active") || 
+          screens["register"]?.classList.contains("active") || 
+          screens["forgot-password"]?.classList.contains("active")) {
+        returnToMenu();
       }
     } else {
       updateMenuAccountBadge();
@@ -4235,7 +4276,9 @@ function defuse(wireEl, x, y) {
   run.coinsEarned += coins;
   run.lastAnswerIndex = run.bomb.challenge.answerIndex;
 
-  createParticles(x, y, getComputedStyle(wireEl).color, 14, 74);
+  const ansWire = run.bomb.wires[run.bomb.challenge.answerIndex];
+  const wireColor = ansWire ? (WIRE_COLOR_MAP[ansWire.color] || "#00e5ff") : "#00e5ff";
+  createParticles(x, y, wireColor, 14, 74);
   createParticles(x, y, "#f8ffff", 6, 46);
   flashScreen("white");
   showFloatingText(`+${points}`);
@@ -4533,20 +4576,32 @@ function updateDailyCardUI() {
   }
 }
 
-function renderTimer(remaining, total) {
-  el.timerValue.textContent = remaining.toFixed(1);
-  el.timerBarFill.style.width = `${(remaining / total) * 100}%`;
-  const warning = remaining <= 5.0 && remaining > 3.0;
-  const danger = remaining <= 3.0 && remaining > 1.5;
-  const critical = remaining <= 1.5;
+let lastRenderedTimerSec = null;
+let lastTimerAlertState = "";
 
-  el.timerWrap.classList.toggle("warning", warning);
-  el.timerWrap.classList.toggle("danger", danger);
-  el.timerWrap.classList.toggle("critical", critical);
-  el.timerValue.classList.toggle("urgent", danger);
-  el.timerValue.classList.toggle("critical", critical);
-  el.timerBarFill.classList.toggle("warn", warning);
-  el.timerBarFill.classList.toggle("danger", danger || critical);
+function renderTimer(remaining, total) {
+  const formatted = remaining.toFixed(1);
+  if (formatted !== lastRenderedTimerSec) {
+    el.timerValue.textContent = formatted;
+    lastRenderedTimerSec = formatted;
+  }
+  el.timerBarFill.style.width = `${(remaining / total) * 100}%`;
+
+  const alertState = remaining <= 1.5 ? "critical" : remaining <= 3.0 ? "danger" : remaining <= 5.0 ? "warning" : "normal";
+  if (alertState !== lastTimerAlertState) {
+    lastTimerAlertState = alertState;
+    const warning = alertState === "warning";
+    const danger = alertState === "danger";
+    const critical = alertState === "critical";
+
+    el.timerWrap.classList.toggle("warning", warning);
+    el.timerWrap.classList.toggle("danger", danger);
+    el.timerWrap.classList.toggle("critical", critical);
+    el.timerValue.classList.toggle("urgent", danger);
+    el.timerValue.classList.toggle("critical", critical);
+    el.timerBarFill.classList.toggle("warn", warning);
+    el.timerBarFill.classList.toggle("danger", danger || critical);
+  }
 
   if (remaining <= 5.0 && !PowerManager.isFrozen) {
     AudioManager.playTimerTick(remaining);
@@ -4616,18 +4671,19 @@ function refreshPersistentUI() {
 }
 
 function flashScreen(type) {
-  el.flashOverlay.classList.remove("flash-white", "flash-red");
-  void el.flashOverlay.offsetWidth;
-  el.flashOverlay.classList.add(type === "red" ? "flash-red" : "flash-white");
+  el.flashOverlay.className = "flash-overlay";
+  requestAnimationFrame(() => {
+    el.flashOverlay.className = `flash-overlay ${type === "red" ? "flash-red" : "flash-white"}`;
+  });
 }
 
 function shakeScreen() {
   const prefersReduced = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   if (prefersReduced) return;
   const app = byId("app");
+  if (!app) return;
   app.classList.remove("shake-lg");
-  void app.offsetWidth;
-  app.classList.add("shake-lg");
+  requestAnimationFrame(() => app.classList.add("shake-lg"));
   later(() => app.classList.remove("shake-lg"), 350);
 }
 
@@ -4635,8 +4691,7 @@ function pulseHud() {
   const hud = document.querySelector(".hud");
   if (!hud) return;
   hud.classList.remove("hud-pulse");
-  void hud.offsetWidth;
-  hud.classList.add("hud-pulse");
+  requestAnimationFrame(() => hud.classList.add("hud-pulse"));
   later(() => hud.classList.remove("hud-pulse"), 280);
 }
 
@@ -4677,26 +4732,35 @@ function showToast(message, tone = "neutral") {
 function createParticles(x, y, color, count = 16, spread = 90) {
   const prefersReduced = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   if (prefersReduced) {
-    count = Math.max(3, Math.round(count * 0.3));
+    count = Math.max(2, Math.round(count * 0.25));
   } else if (typeof window !== "undefined" && window.innerWidth < 480) {
-    count = Math.max(6, Math.round(count * 0.65));
+    count = Math.max(4, Math.min(count, 8));
   }
+
+  const docFrag = document.createDocumentFragment();
+  const particles = [];
 
   for (let i = 0; i < count; i += 1) {
     const particle = document.createElement("div");
-    const size = 3 + Math.random() * 5;
+    const size = 3 + Math.random() * 4;
     const angle = Math.random() * Math.PI * 2;
-    const distance = 16 + Math.random() * spread;
-    const duration = 280 + Math.random() * 240;
+    const distance = 14 + Math.random() * (spread * 0.85);
+    const duration = 240 + Math.random() * 180;
     particle.className = "particle spark";
-    Object.assign(particle.style, { width: `${size}px`, height: `${size}px`, background: color, left: `${x}px`, top: `${y}px` });
-    el.particleLayer.appendChild(particle);
-    particle.animate([
-      { transform: "translate(0,0) scale(1)", opacity: 1 },
-      { transform: `translate(${Math.cos(angle) * distance}px,${Math.sin(angle) * distance}px) scale(0.2)`, opacity: 0 }
-    ], { duration, easing: "cubic-bezier(0.1, 0.7, 0.2, 1)" });
-    later(() => particle.remove(), duration + 40);
+    particle.style.cssText = `width:${size}px;height:${size}px;background:${color};left:${x}px;top:${y}px;transform:translate3d(0,0,0);will-change:transform,opacity;`;
+    docFrag.appendChild(particle);
+    particles.push({ el: particle, angle, distance, duration });
   }
+
+  el.particleLayer.appendChild(docFrag);
+
+  particles.forEach(({ el: particle, angle, distance, duration }) => {
+    particle.animate([
+      { transform: "translate3d(0,0,0) scale(1)", opacity: 1 },
+      { transform: `translate3d(${Math.cos(angle) * distance}px,${Math.sin(angle) * distance}px,0) scale(0.2)`, opacity: 0 }
+    ], { duration, easing: "cubic-bezier(0.1, 0.7, 0.2, 1)" });
+    later(() => particle.remove(), duration + 20);
+  });
 }
 
 function pauseGame() {
@@ -5016,20 +5080,65 @@ if (byId("btn-menu-auth")) {
   });
 }
 
+let isAuthInProgress = false;
+
+function setAuthButtonLoading(btn, isLoading, loadingText, defaultContent) {
+  if (!btn) return;
+  btn.disabled = isLoading;
+  if (isLoading) {
+    btn.classList.add("is-loading");
+    btn.dataset.originalContent = defaultContent || btn.innerHTML;
+    btn.innerHTML = `<span class="auth-spinner" aria-hidden="true"></span> <span>${loadingText}</span>`;
+  } else {
+    btn.classList.remove("is-loading");
+    if (btn.dataset.originalContent) {
+      btn.innerHTML = btn.dataset.originalContent;
+    }
+  }
+}
+
 if (byId("btn-auth-google")) {
   byId("btn-auth-google").addEventListener("click", async () => {
-    const res = await AuthManager.loginWithGoogle();
-    if (!res.success) {
-      showToast(res.message || "Google login unavailable in this build.", "neutral");
+    if (isAuthInProgress) return;
+    isAuthInProgress = true;
+    const btn = byId("btn-auth-google");
+    const originalContent = btn ? btn.innerHTML : "";
+    setAuthButtonLoading(btn, true, "CONNECTING GOOGLE...", originalContent);
+    try {
+      const res = await AuthManager.loginWithGoogle();
+      if (!res.success) {
+        showToast(res.message || "Google login unavailable in this build.", "neutral");
+      } else {
+        returnToMenu();
+      }
+    } catch (err) {
+      showToast("Google login was cancelled or encountered an error.", "neutral");
+    } finally {
+      setAuthButtonLoading(btn, false, "", originalContent);
+      isAuthInProgress = false;
     }
   });
 }
 
 if (byId("btn-auth-facebook")) {
   byId("btn-auth-facebook").addEventListener("click", async () => {
-    const res = await AuthManager.loginWithFacebook();
-    if (!res.success) {
-      showToast(res.message || "Facebook login unavailable in this build.", "neutral");
+    if (isAuthInProgress) return;
+    isAuthInProgress = true;
+    const btn = byId("btn-auth-facebook");
+    const originalContent = btn ? btn.innerHTML : "";
+    setAuthButtonLoading(btn, true, "CONNECTING FACEBOOK...", originalContent);
+    try {
+      const res = await AuthManager.loginWithFacebook();
+      if (!res.success) {
+        showToast(res.message || "Facebook login unavailable in this build.", "neutral");
+      } else {
+        returnToMenu();
+      }
+    } catch (err) {
+      showToast("Facebook login encountered an error.", "neutral");
+    } finally {
+      setAuthButtonLoading(btn, false, "", originalContent);
+      isAuthInProgress = false;
     }
   });
 }
@@ -5055,6 +5164,7 @@ if (byId("btn-cancel-email-login")) {
 
 if (byId("btn-do-login-email")) {
   byId("btn-do-login-email").addEventListener("click", async () => {
+    if (isAuthInProgress) return;
     const email = el.loginEmail?.value || "";
     const pass = el.loginPassword?.value || "";
 
@@ -5074,20 +5184,35 @@ if (byId("btn-do-login-email")) {
       return;
     }
 
+    isAuthInProgress = true;
+    const btn = byId("btn-do-login-email");
+    const originalContent = btn ? btn.innerHTML : "";
+    setAuthButtonLoading(btn, true, "SIGNING IN...", originalContent);
     if (el.loginErrorMsg) el.loginErrorMsg.style.display = "none";
-    const res = await AuthManager.loginWithEmail(email, pass);
-    if (!res.success) {
+
+    try {
+      const res = await AuthManager.loginWithEmail(email, pass);
+      if (!res.success) {
+        if (el.loginErrorMsg) {
+          el.loginErrorMsg.textContent = res.message || "Email login failed.";
+          el.loginErrorMsg.style.display = "block";
+        }
+        showToast(res.message || "Email login failed.", "danger");
+      } else {
+        if (el.loginEmail) el.loginEmail.value = "";
+        if (el.loginPassword) el.loginPassword.value = "";
+        if (el.formLoginEmail) el.formLoginEmail.style.display = "none";
+        if (el.authProvidersContainer) el.authProvidersContainer.style.display = "flex";
+        returnToMenu();
+      }
+    } catch (err) {
       if (el.loginErrorMsg) {
-        el.loginErrorMsg.textContent = res.message || "Email login failed.";
+        el.loginErrorMsg.textContent = "Authentication request failed. Please try again.";
         el.loginErrorMsg.style.display = "block";
       }
-      showToast(res.message || "Email login failed.", "danger");
-    } else {
-      if (el.loginEmail) el.loginEmail.value = "";
-      if (el.loginPassword) el.loginPassword.value = "";
-      if (el.formLoginEmail) el.formLoginEmail.style.display = "none";
-      if (el.authProvidersContainer) el.authProvidersContainer.style.display = "flex";
-      returnToMenu();
+    } finally {
+      setAuthButtonLoading(btn, false, "", originalContent);
+      isAuthInProgress = false;
     }
   });
 }
@@ -5128,6 +5253,7 @@ if (byId("btn-back-register")) {
 
 if (byId("btn-do-register")) {
   byId("btn-do-register").addEventListener("click", async () => {
+    if (isAuthInProgress) return;
     const name = el.registerDisplayName?.value || "";
     const email = el.registerEmail?.value || "";
     const pass = el.registerPassword?.value || "";
@@ -5166,26 +5292,42 @@ if (byId("btn-do-register")) {
       return;
     }
 
+    isAuthInProgress = true;
+    const btn = byId("btn-do-register");
+    const originalContent = btn ? btn.innerHTML : "";
+    setAuthButtonLoading(btn, true, "CREATING ACCOUNT...", originalContent);
     if (el.registerErrorMsg) el.registerErrorMsg.style.display = "none";
-    const res = await AuthManager.registerWithEmail(name, email, pass);
-    if (!res.success) {
+
+    try {
+      const res = await AuthManager.registerWithEmail(name, email, pass);
+      if (!res.success) {
+        if (el.registerErrorMsg) {
+          el.registerErrorMsg.textContent = res.message || "Account creation failed.";
+          el.registerErrorMsg.style.display = "block";
+        }
+        showToast(res.message || "Account creation failed.", "danger");
+      } else {
+        if (el.registerDisplayName) el.registerDisplayName.value = "";
+        if (el.registerEmail) el.registerEmail.value = "";
+        if (el.registerPassword) el.registerPassword.value = "";
+        if (el.registerConfirmPassword) el.registerConfirmPassword.value = "";
+        returnToMenu();
+      }
+    } catch (err) {
       if (el.registerErrorMsg) {
-        el.registerErrorMsg.textContent = res.message || "Account creation failed.";
+        el.registerErrorMsg.textContent = "Account creation failed. Please try again.";
         el.registerErrorMsg.style.display = "block";
       }
-      showToast(res.message || "Account creation failed.", "danger");
-    } else {
-      if (el.registerDisplayName) el.registerDisplayName.value = "";
-      if (el.registerEmail) el.registerEmail.value = "";
-      if (el.registerPassword) el.registerPassword.value = "";
-      if (el.registerConfirmPassword) el.registerConfirmPassword.value = "";
-      returnToMenu();
+    } finally {
+      setAuthButtonLoading(btn, false, "", originalContent);
+      isAuthInProgress = false;
     }
   });
 }
 
 if (byId("btn-do-forgot")) {
   byId("btn-do-forgot").addEventListener("click", async () => {
+    if (isAuthInProgress) return;
     const email = el.forgotEmail?.value || "";
     if (!email || !email.includes("@")) {
       if (el.forgotErrorMsg) {
@@ -5194,17 +5336,33 @@ if (byId("btn-do-forgot")) {
       }
       return;
     }
+
+    isAuthInProgress = true;
+    const btn = byId("btn-do-forgot");
+    const originalContent = btn ? btn.innerHTML : "";
+    setAuthButtonLoading(btn, true, "SENDING LINK...", originalContent);
     if (el.forgotErrorMsg) el.forgotErrorMsg.style.display = "none";
-    const res = await AuthManager.sendPasswordReset(email);
-    if (res.success) {
-      showToast(res.message || "Password reset link sent.", "success");
-      showScreen("login");
-    } else {
+
+    try {
+      const res = await AuthManager.sendPasswordReset(email);
+      if (res.success) {
+        showToast(res.message || "Password reset link sent.", "success");
+        showScreen("login");
+      } else {
+        if (el.forgotErrorMsg) {
+          el.forgotErrorMsg.textContent = res.message || "Password reset failed.";
+          el.forgotErrorMsg.style.display = "block";
+        }
+        showToast(res.message || "Password reset failed.", "danger");
+      }
+    } catch (err) {
       if (el.forgotErrorMsg) {
-        el.forgotErrorMsg.textContent = res.message || "Password reset failed.";
+        el.forgotErrorMsg.textContent = "Password reset request failed. Please try again.";
         el.forgotErrorMsg.style.display = "block";
       }
-      showToast(res.message || "Password reset failed.", "danger");
+    } finally {
+      setAuthButtonLoading(btn, false, "", originalContent);
+      isAuthInProgress = false;
     }
   });
 }

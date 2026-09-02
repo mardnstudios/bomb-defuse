@@ -522,6 +522,8 @@ button { font-family: inherit; cursor: pointer; border: none; }
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 .wire-segment {
@@ -531,6 +533,8 @@ button { font-family: inherit; cursor: pointer; border: none; }
   position: relative;
   transition: transform 0.14s cubic-bezier(0.18, 0.89, 0.32, 1.28), opacity 0.14s ease;
   box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.4);
+  transform: translateZ(0);
+  will-change: transform;
 }
 .wire-segment.wire-top {
   border-radius: 6px 6px 0 0;
@@ -1359,6 +1363,38 @@ button:focus-visible, .wire:focus-visible .wire-hit-area {
   padding: 3px 8px;
   border-radius: 999px;
   letter-spacing: 0.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.ach-circle-badge {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 1px;
+  padding: 3px 7px;
+  min-width: 26px;
+  border-radius: 10px;
+  background: rgba(0, 229, 255, 0.12);
+  border: 1px solid rgba(0, 229, 255, 0.4);
+  color: var(--accent);
+  box-shadow: 0 0 6px rgba(0, 229, 255, 0.25);
+  flex-shrink: 0;
+  line-height: 1;
+  white-space: nowrap;
+}
+.ach-circle-badge .ach-badge-val {
+  font-size: 12px;
+  font-weight: 900;
+  color: #ffffff;
+}
+.ach-circle-badge .ach-badge-total {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--accent);
+  opacity: 0.85;
 }
 
 .achievement-inner {
@@ -2405,6 +2441,28 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
 }
 .auth-btn:hover {
   transform: translateY(-1px);
+}
+.auth-btn:disabled,
+.btn:disabled,
+.btn.is-loading {
+  opacity: 0.65 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+  transform: none !important;
+}
+.auth-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: authSpinnerRotate 0.6s linear infinite;
+  vertical-align: middle;
+}
+@keyframes authSpinnerRotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 .auth-btn-google {
   background: #ffffff;
