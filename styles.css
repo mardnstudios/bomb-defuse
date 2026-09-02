@@ -69,7 +69,13 @@ button { font-family: inherit; cursor: pointer; border: none; }
   display: none;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
   padding: max(16px, env(safe-area-inset-top, 16px)) max(16px, env(safe-area-inset-right, 16px)) max(16px, env(safe-area-inset-bottom, 16px)) max(16px, env(safe-area-inset-left, 16px));
 }
 .screen.active { display: flex; }
@@ -80,6 +86,21 @@ button { font-family: inherit; cursor: pointer; border: none; }
   z-index: 50;
 }
 
+.menu-inner,
+.auth-inner,
+.profile-inner,
+.settings-inner,
+.stats-inner,
+.goals-inner,
+.achievement-inner,
+.shop-inner,
+.daily-result-inner,
+.panel {
+  margin: auto 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .menu-inner {
   display: flex;
   flex-direction: column;
@@ -87,6 +108,8 @@ button { font-family: inherit; cursor: pointer; border: none; }
   gap: 14px;
   width: 100%;
   max-width: 420px;
+  margin: auto 0;
+  box-sizing: border-box;
   animation: menuIn 0.4s ease;
 }
 
@@ -2330,12 +2353,15 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
 
 /* Auth Screens */
 .auth-inner {
+  width: 100%;
   max-width: 380px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
   text-align: center;
+  margin: auto 0;
+  box-sizing: border-box;
 }
 .auth-brand-badge {
   font-size: 10px;
@@ -2362,6 +2388,7 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
   flex-direction: column;
   gap: 8px;
   width: 100%;
+  box-sizing: border-box;
 }
 .auth-btn {
   display: flex;
@@ -2372,6 +2399,8 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
   font-weight: 800;
   padding: 12px 14px;
   border-radius: 10px;
+  width: 100%;
+  box-sizing: border-box;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .auth-btn:hover {
@@ -2414,6 +2443,7 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
   align-items: center;
   width: 100%;
   margin: 4px 0;
+  box-sizing: border-box;
 }
 .auth-divider::before,
 .auth-divider::after {
@@ -2432,12 +2462,15 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
   flex-direction: column;
   gap: 10px;
   width: 100%;
+  box-sizing: border-box;
 }
 .auth-input-group {
   display: flex;
   flex-direction: column;
   gap: 4px;
   text-align: left;
+  width: 100%;
+  box-sizing: border-box;
 }
 .auth-input-group label {
   font-size: 10px;
@@ -2446,6 +2479,8 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
   color: var(--muted);
 }
 .auth-input {
+  width: 100%;
+  box-sizing: border-box;
   background: #0a0e16;
   border: 1px solid #1e2838;
   border-radius: 8px;
@@ -2470,6 +2505,9 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
   border-radius: 8px;
   text-align: left;
   line-height: 1.3;
+  width: 100%;
+  box-sizing: border-box;
+  word-break: break-word;
 }
 .auth-footer-links {
   display: flex;
@@ -2479,6 +2517,8 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
   font-size: 12px;
   color: var(--muted);
   margin-top: 2px;
+  width: 100%;
+  box-sizing: border-box;
 }
 .auth-footer-links p {
   margin: 0;
@@ -2505,11 +2545,14 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
 
 /* Player Profile Screen */
 .profile-inner {
+  width: 100%;
   max-width: 420px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
+  margin: auto 0;
+  box-sizing: border-box;
 }
 .profile-card {
   width: 100%;
@@ -2520,6 +2563,7 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
   display: flex;
   flex-direction: column;
   gap: 12px;
+  box-sizing: border-box;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 .profile-header-wrap {
@@ -2622,23 +2666,30 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
 }
 .profile-stats-summary {
   width: 100%;
+  box-sizing: border-box;
 }
 .profile-stat-grid {
   grid-template-columns: repeat(2, 1fr);
   gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
 }
 .profile-actions-wrap {
   display: flex;
   flex-direction: column;
   gap: 6px;
   width: 100%;
+  box-sizing: border-box;
 }
 
 /* Avatar Picker Modal */
 .avatar-picker-panel {
+  width: 100%;
   max-width: 360px;
   text-align: center;
   padding: 18px;
+  margin: auto 0;
+  box-sizing: border-box;
 }
 .avatar-picker-subtitle {
   font-size: 12px;
@@ -2650,6 +2701,8 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
   margin-bottom: 14px;
+  width: 100%;
+  box-sizing: border-box;
 }
 .avatar-card {
   display: flex;
@@ -2661,6 +2714,7 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
   border: 1.5px solid #1f2a3c;
   border-radius: 12px;
   cursor: pointer;
+  box-sizing: border-box;
   transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 .avatar-card:hover {
@@ -2690,15 +2744,19 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
   flex-direction: column;
   gap: 6px;
   width: 100%;
+  box-sizing: border-box;
 }
 
 /* Account Settings Screen */
 .settings-inner {
+  width: 100%;
   max-width: 440px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
+  margin: auto 0;
+  box-sizing: border-box;
 }
 .settings-container {
   display: flex;
@@ -2707,7 +2765,9 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
   width: 100%;
   max-height: 60vh;
   overflow-y: auto;
+  overflow-x: hidden;
   padding-right: 2px;
+  box-sizing: border-box;
 }
 .settings-section {
   background: #0d121c;
@@ -2718,6 +2778,8 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
   flex-direction: column;
   gap: 8px;
   text-align: left;
+  width: 100%;
+  box-sizing: border-box;
 }
 .settings-section-title {
   font-size: 10px;
@@ -2732,6 +2794,8 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
   align-items: center;
   padding: 6px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  width: 100%;
+  box-sizing: border-box;
 }
 .settings-row:last-child {
   border-bottom: none;
@@ -2776,6 +2840,7 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
   gap: 6px;
   width: 100%;
   margin-top: 4px;
+  box-sizing: border-box;
 }
 .btn-danger {
   background: rgba(255, 71, 87, 0.15);
@@ -2794,11 +2859,14 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
 
 /* Delete Account Modal */
 .delete-panel {
+  width: 100%;
   max-width: 380px;
   text-align: center;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  margin: auto 0;
+  box-sizing: border-box;
 }
 .danger-title {
   color: var(--danger);
@@ -2817,9 +2885,11 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
 }
 .delete-input-wrap {
   width: 100%;
+  box-sizing: border-box;
 }
 .delete-input {
   width: 100%;
+  box-sizing: border-box;
   text-align: center;
   font-weight: 900;
   letter-spacing: 2px;
@@ -2833,6 +2903,8 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
   border: 1px solid rgba(255, 159, 67, 0.3);
   padding: 8px;
   border-radius: 8px;
+  width: 100%;
+  box-sizing: border-box;
 }
 .delete-actions,
 .logout-actions {
@@ -2840,12 +2912,16 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
   flex-direction: column;
   gap: 6px;
   width: 100%;
+  box-sizing: border-box;
 }
 
 /* Sync Conflict Modal */
 .conflict-panel {
+  width: 100%;
   max-width: 440px;
   text-align: center;
+  margin: auto 0;
+  box-sizing: border-box;
 }
 .conflict-subtitle {
   font-size: 12px;
@@ -2857,6 +2933,8 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
   grid-template-columns: 1fr 1fr;
   gap: 10px;
   margin-bottom: 10px;
+  width: 100%;
+  box-sizing: border-box;
 }
 .conflict-card {
   background: #0d121c;
@@ -2867,6 +2945,8 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
   flex-direction: column;
   gap: 8px;
   text-align: left;
+  width: 100%;
+  box-sizing: border-box;
 }
 .conflict-card-tag {
   font-size: 10px;
@@ -2885,19 +2965,25 @@ button:focus-visible, .btn:focus-visible, .power-btn:focus-visible, .icon-btn:fo
   color: #f0f4f8;
 }
 
-@media (max-width: 360px) {
+@media (max-width: 480px) {
+  .btn { padding: 14px; font-size: 15px; }
+  .btn-with-badge { padding: 14px 16px; }
+}
+
+@media (max-width: 380px) {
   .title { font-size: 24px; }
   .btn { padding: 12px 10px; font-size: 13px; }
   .hud-value { font-size: 18px; }
   .timer-value { font-size: 32px; }
   .instruction { font-size: 14px; padding: 8px 12px; }
-  .bomb { width: 280px; height: 280px; }
+  .bomb { width: min(78vw, 260px); height: min(78vw, 260px); }
   .tutorial-panel { padding: 14px; gap: 8px; }
   .tutorial-step-desc { font-size: 11px; }
   .menu-action-grid { gap: 6px; }
   .login-days-grid { gap: 4px; }
   .avatar-grid { grid-template-columns: repeat(3, 1fr); }
   .conflict-cards-grid { grid-template-columns: 1fr; }
+  .stat-grid { gap: 8px; }
 }
 
 

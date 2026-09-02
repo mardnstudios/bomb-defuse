@@ -494,18 +494,87 @@ const CloudSaveManager = (() => {
     if (!isConnected) {
       return { status: "OFFLINE", message: "Offline. Local save will synchronize when online." };
     }
-    return { status: "UNAVAILABLE", message: "Cloud save requires a connected account backend service." };
+    const user = typeof FirebaseManager !== "undefined" ? FirebaseManager.getCurrentUser() : null;
+    if (!user || !user.uid) {
+      return { status: "NO_AUTH_USER", message: "No authenticated account session." };
+    }
+    const db = typeof FirebaseManager !== "undefined" && typeof FirebaseManager.getDb === "function" ? FirebaseManager.getDb() : (typeof window !== "undefined" && window.firebase && typeof window.firebase.firestore === "function" ? window.firebase.firestore() : null);
+    if (!db) {
+      return { status: "UNAVAILABLE", message: "Firestore database service is unavailable." };
+    }
+    try {
+      const payload = createSnapshot(saveData || profile);
+      if (payload.account) {
+        delete payload.account.password;
+        delete payload.account.token;
+      }
+      payload.updatedAt = new Date().toISOString();
+      await db.collection("users").doc(user.uid).set(payload, { merge: true });
+      return { status: "SUCCESS", message: "Cloud save synchronized." };
+    } catch (err) {
+      console.warn("[CloudSaveManager] uploadSave error:", err);
+      return { status: "ERROR", message: err.message || "Failed to upload cloud save." };
+    }
   }
 
   async function downloadSave() {
     if (!AuthManager?.isAuthenticated?.()) {
       return { status: "GUEST_LOCAL_ONLY" };
     }
-    return { status: "UNAVAILABLE" };
+    const user = typeof FirebaseManager !== "undefined" ? FirebaseManager.getCurrentUser() : null;
+    if (!user || !user.uid) {
+      return { status: "NO_AUTH_USER" };
+    }
+    const db = typeof FirebaseManager !== "undefined" && typeof FirebaseManager.getDb === "function" ? FirebaseManager.getDb() : (typeof window !== "undefined" && window.firebase && typeof window.firebase.firestore === "function" ? window.firebase.firestore() : null);
+    if (!db) {
+      return { status: "UNAVAILABLE" };
+    }
+    try {
+      const doc = await db.collection("users").doc(user.uid).get();
+      if (doc && doc.exists) {
+        const cloudData = doc.data();
+        return { status: "SUCCESS", data: cloudData };
+      }
+      return { status: "NO_CLOUD_SAVE" };
+    } catch (err) {
+      console.warn("[CloudSaveManager] downloadSave error:", err);
+      return { status: "ERROR", message: err.message };
+    }
   }
 
   async function sync() {
-    return { status: "LOCAL_SOURCE_OF_TRUTH" };
+    if (!AuthManager?.isAuthenticated?.() || !isConnected) {
+      return { status: "LOCAL_SOURCE_OF_TRUTH" };
+    }
+    try {
+      const res = await downloadSave();
+      if (res.status === "SUCCESS" && res.data) {
+        const cloudData = res.data;
+        const conflict = detectConflict(profile, cloudData);
+        if (conflict.hasConflict) {
+          showConflictModal(profile, cloudData, (resolvedSave) => {
+            profile = resolvedSave;
+            SaveManager.save(profile);
+            refreshPersistentUI();
+            updateMenuAccountBadge();
+          });
+          return { status: "CONFLICT_MODAL_SHOWN" };
+        } else {
+          profile = mergeSaves(profile, cloudData);
+          SaveManager.save(profile);
+          refreshPersistentUI();
+          updateMenuAccountBadge();
+          return { status: "MERGED" };
+        }
+      } else if (res.status === "NO_CLOUD_SAVE") {
+        await uploadSave(profile);
+        return { status: "FIRST_UPLOAD_SUCCESS" };
+      }
+      return { status: "LOCAL_SOURCE_OF_TRUTH" };
+    } catch (e) {
+      console.warn("[CloudSaveManager] sync error:", e);
+      return { status: "ERROR", message: e.message };
+    }
   }
 
   return {
@@ -3113,17 +3182,19 @@ const AUTH_CONFIG = {
 };
 
 const FIREBASE_CONFIG = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
+  apiKey: "AIzaSyA8hs_8wY570oHBg_-eE0z7ObFLmJGpE2Y",
+  authDomain: "bomb-defuse-0428.firebaseapp.com",
+  projectId: "bomb-defuse-0428",
+  storageBucket: "bomb-defuse-0428.firebasestorage.app",
+  messagingSenderId: "1036895238881",
+  appId: "1:1036895238881:web:5efadcfca4e53865c2d5a0",
+  measurementId: "G-8TV39CN4V9"
 };
 
 const FirebaseManager = (() => {
   let app = null;
   let auth = null;
+  let db = null;
   let currentUser = null;
   let authStateListeners = [];
   let isInitialized = false;
@@ -3146,6 +3217,17 @@ const FirebaseManager = (() => {
     return isConfigured() && hasSdk;
   }
 
+  function getDb() {
+    if (!db && typeof window !== "undefined" && window.firebase && typeof window.firebase.firestore === "function") {
+      try {
+        db = window.firebase.firestore();
+      } catch (e) {
+        console.warn("[FirebaseManager] Firestore getDb warning:", e);
+      }
+    }
+    return db;
+  }
+
   function initialize() {
     if (isInitialized) return;
     isInitialized = true;
@@ -3163,6 +3245,13 @@ const FirebaseManager = (() => {
           app = window.firebase.apps[0];
         }
         auth = window.firebase.auth();
+        if (typeof window.firebase.firestore === "function") {
+          try {
+            db = window.firebase.firestore();
+          } catch (e) {
+            console.warn("[FirebaseManager] Firestore initialization warning:", e);
+          }
+        }
 
         // Register persistent auth state change listener
         auth.onAuthStateChanged((user) => {
@@ -3217,7 +3306,9 @@ const FirebaseManager = (() => {
       case "auth/account-exists-with-different-credential":
         return "An account already exists with this email under a different sign-in method.";
       case "auth/operation-not-allowed":
-        return "This authentication provider is not enabled in the Firebase Console.";
+        return "This authentication provider is not configured yet in the project.";
+      case "auth/configuration-not-found":
+        return "This authentication provider is not configured yet.";
       case "auth/requires-recent-login":
         return "This sensitive action requires recent authentication. Please sign in again.";
       case "auth/too-many-requests":
@@ -3353,6 +3444,7 @@ const FirebaseManager = (() => {
     initialize,
     isConfigured,
     isAvailable,
+    getDb,
     onAuthStateChanged,
     formatAuthError,
     signInWithGoogle,
@@ -3507,6 +3599,9 @@ const AuthManager = (() => {
       SaveManager.save(profile);
       updateMenuAccountBadge();
       updateNetworkBadge();
+      if (typeof CloudSaveManager !== "undefined" && typeof CloudSaveManager.sync === "function") {
+        CloudSaveManager.sync().catch((err) => { console.warn("[AuthManager] CloudSave sync error:", err); });
+      }
     } else {
       updateMenuAccountBadge();
       updateNetworkBadge();
