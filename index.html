@@ -38,16 +38,37 @@
   <!-- ================= MENU SCREEN ================= -->
   <section id="screen-menu" class="screen active" aria-labelledby="menu-title">
     <div class="menu-inner">
-      <!-- Player Account Header Bar -->
-      <div class="menu-account-bar" id="menu-account-bar" role="region" aria-label="Player account summary">
-        <button id="btn-menu-profile" class="account-badge-btn" type="button" aria-label="View Player Profile">
-          <span class="account-avatar-icon" id="menu-avatar-icon" aria-hidden="true">💣</span>
-          <div class="account-badge-info">
-            <span class="account-name" id="menu-display-name">Guest</span>
-            <span class="account-status" id="menu-account-status">DEVICE SAVE · ONLINE</span>
+      <!-- Top Bar with Circular Account Avatar -->
+      <div class="menu-top-bar" role="region" aria-label="Player account">
+        <div class="menu-top-spacer"></div>
+        <div class="menu-account-anchor">
+          <button id="btn-menu-avatar" class="menu-avatar-btn" type="button" aria-label="Account Menu" aria-haspopup="dialog" aria-expanded="false">
+            <span class="menu-avatar-circle" id="menu-avatar-icon" aria-hidden="true">💣</span>
+          </button>
+          
+          <!-- Compact Account Popup Menu -->
+          <div id="menu-account-popup" class="account-popup-menu" role="dialog" aria-label="Account Menu" aria-modal="false" style="display: none;">
+            <div class="account-popup-header">
+              <div class="account-popup-avatar-circle" id="popup-avatar-icon" aria-hidden="true">💣</div>
+              <div class="account-popup-info">
+                <div class="account-popup-name" id="popup-display-name">Guest</div>
+                <div class="account-popup-email" id="popup-email">GUEST</div>
+                <div class="account-popup-status" id="popup-status">
+                  <span class="status-dot" id="popup-status-dot" aria-hidden="true">●</span>
+                  <span id="popup-status-text">ONLINE</span>
+                </div>
+              </div>
+            </div>
+            <div class="account-popup-divider"></div>
+            <div class="account-popup-actions" id="popup-auth-actions" style="display: none;">
+              <button id="btn-popup-settings" class="btn btn-secondary btn-popup-action" type="button">ACCOUNT SETTINGS</button>
+              <button id="btn-popup-logout" class="btn btn-ghost btn-popup-action text-danger" type="button">LOG OUT</button>
+            </div>
+            <div class="account-popup-actions" id="popup-guest-actions">
+              <button id="btn-popup-signin" class="btn btn-primary btn-popup-action" type="button">SIGN IN / CREATE ACCOUNT</button>
+            </div>
           </div>
-        </button>
-        <button id="btn-menu-auth" class="btn btn-tiny btn-auth" type="button" aria-label="Sign in or create account">ACCOUNT</button>
+        </div>
       </div>
 
       <div class="guest-notice-banner" id="guest-notice-banner">
@@ -87,7 +108,7 @@
         </button>
         <button id="btn-achievements" class="btn btn-secondary btn-with-badge" aria-label="View Achievements">
           <span>ACHIEVEMENTS</span>
-          <span class="ach-badge ach-circle-badge" id="menu-achievements-badge"><span class="ach-badge-val">0</span><span class="ach-badge-total">/23</span></span>
+          <span class="ach-badge ach-pill-badge ach-circle-badge" id="menu-achievements-badge"><span class="ach-badge-val">0</span><span class="ach-badge-total">/23</span></span>
         </button>
       </div>
 

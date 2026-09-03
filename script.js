@@ -155,13 +155,22 @@ const el = {
   loginDaysGrid: byId("login-days-grid"),
   btnClaimLoginReward: byId("btn-claim-login-reward"),
   btnCloseLoginReward: byId("btn-close-login-reward"),
-  // Phase 8: Player Account & Profile elements
-  menuAccountBar: byId("menu-account-bar"),
-  btnMenuProfile: byId("btn-menu-profile"),
+  // Phase 8 & 10: Player Account & Profile elements
+  menuTopBar: document.querySelector(".menu-top-bar"),
+  btnMenuAvatar: byId("btn-menu-avatar"),
+  menuAccountPopup: byId("menu-account-popup"),
+  popupAvatarIcon: byId("popup-avatar-icon"),
+  popupDisplayName: byId("popup-display-name"),
+  popupEmail: byId("popup-email"),
+  popupStatus: byId("popup-status"),
+  popupStatusDot: byId("popup-status-dot"),
+  popupStatusText: byId("popup-status-text"),
+  popupAuthActions: byId("popup-auth-actions"),
+  popupGuestActions: byId("popup-guest-actions"),
+  btnPopupSettings: byId("btn-popup-settings"),
+  btnPopupLogout: byId("btn-popup-logout"),
+  btnPopupSignin: byId("btn-popup-signin"),
   menuAvatarIcon: byId("menu-avatar-icon"),
-  menuDisplayName: byId("menu-display-name"),
-  menuAccountStatus: byId("menu-account-status"),
-  btnMenuAuth: byId("btn-menu-auth"),
   guestNoticeBanner: byId("guest-notice-banner"),
   // Auth screen elements
   authProvidersContainer: byId("auth-providers-container"),
@@ -366,6 +375,7 @@ const LocalSaveManager = (() => {
 
 const CloudSaveManager = (() => {
   let isConnected = typeof navigator !== "undefined" ? navigator.onLine : true;
+  let _hasCloudSave = false;
   let activeConflictResolution = null;
 
   function initialize() {
@@ -376,7 +386,11 @@ const CloudSaveManager = (() => {
   }
 
   function hasCloudSave() {
-    return Boolean(AuthManager?.isAuthenticated?.());
+    return _hasCloudSave || Boolean(AuthManager?.isAuthenticated?.());
+  }
+
+  function setHasCloudSave(val) {
+    _hasCloudSave = Boolean(val);
   }
 
   function createSnapshot(data) {
@@ -426,7 +440,7 @@ const CloudSaveManager = (() => {
     base.bestScore = Math.max(l.bestScore, c.bestScore);
     base.bestStreak = Math.max(l.bestStreak, c.bestStreak);
     base.bestDailyScore = Math.max(l.bestDailyScore, c.bestDailyScore);
-    base.soundEnabled = l.soundEnabled;
+    base.soundEnabled = l.soundEnabled !== undefined ? l.soundEnabled : (c.soundEnabled !== undefined ? c.soundEnabled : true);
 
     // Upgrades: max levels
     Object.keys(base.upgrades).forEach(id => {
@@ -443,26 +457,110 @@ const CloudSaveManager = (() => {
     const cs = c.stats;
     base.stats.totalBombsDefused = Math.max(ls.totalBombsDefused, cs.totalBombsDefused);
     base.stats.totalBombsFailed = Math.max(ls.totalBombsFailed, cs.totalBombsFailed);
-    base.stats.totalAttempts = Math.max(ls.totalAttempts, cs.totalAttempts);
+    base.stats.totalAttempts = Math.max(ls.totalAttempts, cs.totalAttempts, base.stats.totalBombsDefused + base.stats.totalBombsFailed);
     base.stats.totalScore = Math.max(ls.totalScore, cs.totalScore);
-    base.stats.bestScore = Math.max(ls.bestScore, cs.bestScore);
-    base.stats.bestStreak = Math.max(ls.bestStreak, cs.bestStreak);
-    base.stats.totalCoinsEarned = Math.max(ls.totalCoinsEarned, cs.totalCoinsEarned);
+    base.stats.bestScore = Math.max(base.bestScore, ls.bestScore, cs.bestScore);
+    base.stats.bestStreak = Math.max(base.bestStreak, ls.bestStreak, cs.bestStreak);
+    base.stats.totalCoinsEarned = Math.max(base.coins, ls.totalCoinsEarned, cs.totalCoinsEarned);
     base.stats.totalCoinsSpent = Math.max(ls.totalCoinsSpent, cs.totalCoinsSpent);
     base.stats.totalPowersUsed = Math.max(ls.totalPowersUsed, cs.totalPowersUsed);
     base.stats.totalUpgradesPurchased = Math.max(ls.totalUpgradesPurchased, cs.totalUpgradesPurchased);
     base.stats.totalDailyChallengesCompleted = Math.max(ls.totalDailyChallengesCompleted, cs.totalDailyChallengesCompleted);
     base.stats.perfectDailyChallenges = Math.max(ls.perfectDailyChallenges, cs.perfectDailyChallenges);
     base.stats.totalPlayTimeSeconds = Math.max(ls.totalPlayTimeSeconds, cs.totalPlayTimeSeconds);
-    base.stats.fastestDefuseSeconds = Math.min(ls.fastestDefuseSeconds || 999, cs.fastestDefuseSeconds || 999);
+    const lFast = (ls.fastestDefuseSeconds && ls.fastestDefuseSeconds > 0) ? ls.fastestDefuseSeconds : 999;
+    const cFast = (cs.fastestDefuseSeconds && cs.fastestDefuseSeconds > 0) ? cs.fastestDefuseSeconds : 999;
+    base.stats.fastestDefuseSeconds = Math.min(lFast, cFast);
     base.stats.rulesMastered = Array.from(new Set([...(ls.rulesMastered || []), ...(cs.rulesMastered || [])]));
-    base.stats.achievementsUnlocked = Math.max(ls.achievementsUnlocked, cs.achievementsUnlocked);
+
+    // Personal Bests
+    const lpb = l.personalBests || {};
+    const cpb = c.personalBests || {};
+    base.personalBests.bestScore = Math.max(base.bestScore, lpb.bestScore || 0, cpb.bestScore || 0);
+    base.personalBests.bestStreak = Math.max(base.bestStreak, lpb.bestStreak || 0, cpb.bestStreak || 0);
+    base.personalBests.mostBombsRun = Math.max(lpb.mostBombsRun || 0, cpb.mostBombsRun || 0);
+    const lpbFast = (lpb.fastestDefuse && lpb.fastestDefuse > 0) ? lpb.fastestDefuse : 0;
+    const cpbFast = (cpb.fastestDefuse && cpb.fastestDefuse > 0) ? cpb.fastestDefuse : 0;
+    base.personalBests.fastestDefuse = (lpbFast > 0 && cpbFast > 0) ? Math.min(lpbFast, cpbFast) : (lpbFast || cpbFast || 0);
+    base.personalBests.bestDailyScore = Math.max(base.bestDailyScore, lpb.bestDailyScore || 0, cpb.bestDailyScore || 0);
+    base.personalBests.mostCoinsRun = Math.max(lpb.mostCoinsRun || 0, cpb.mostCoinsRun || 0);
+
+    // Daily Challenge
+    const ld = l.daily || {};
+    const cd = c.daily || {};
+    if (ld.date && cd.date && ld.date === cd.date) {
+      base.daily.date = ld.date;
+      base.daily.bombsCompleted = Math.max(ld.bombsCompleted || 0, cd.bombsCompleted || 0);
+      base.daily.score = Math.max(ld.score || 0, cd.score || 0);
+      base.daily.rewardClaimed = Boolean(ld.rewardClaimed || cd.rewardClaimed);
+      base.daily.status = (ld.status === "COMPLETED" || cd.status === "COMPLETED") ? "COMPLETED" : (base.daily.bombsCompleted > 0 ? "IN_PROGRESS" : (ld.status || cd.status || "NONE"));
+    } else if (cd.date && (!ld.date || cd.date >= ld.date)) {
+      base.daily = Object.assign({}, cd);
+    } else {
+      base.daily = Object.assign({}, ld);
+    }
+
+    // Daily Goals
+    const ldg = l.dailyGoals || {};
+    const cdg = c.dailyGoals || {};
+    if (ldg.date && cdg.date && ldg.date === cdg.date && Array.isArray(ldg.goals) && Array.isArray(cdg.goals)) {
+      base.dailyGoals.date = ldg.date;
+      base.dailyGoals.goals = ldg.goals.map(lg => {
+        const cg = cdg.goals.find(g => g.id === lg.id) || {};
+        return {
+          id: lg.id,
+          text: lg.text || cg.text || "",
+          target: lg.target || cg.target || 1,
+          progress: Math.max(lg.progress || 0, cg.progress || 0),
+          reward: lg.reward || cg.reward || 50,
+          type: lg.type || cg.type || "defuse",
+          claimed: Boolean(lg.claimed || cg.claimed),
+        };
+      });
+    } else if (cdg.date && (!ldg.date || cdg.date >= ldg.date)) {
+      base.dailyGoals = Object.assign({}, cdg);
+    } else {
+      base.dailyGoals = Object.assign({}, ldg);
+    }
+
+    // Login Reward
+    const llr = l.loginReward || {};
+    const clr = c.loginReward || {};
+    base.loginReward.streakDay = Math.max(llr.streakDay || 0, clr.streakDay || 0);
+    base.loginReward.lastClaimDate = (llr.lastClaimDate >= clr.lastClaimDate) ? (llr.lastClaimDate || clr.lastClaimDate || "") : (clr.lastClaimDate || llr.lastClaimDate || "");
 
     // Achievements: union of unlocked
     const allUnlocked = Array.from(new Set([...(l.achievements?.unlocked || []), ...(c.achievements?.unlocked || [])]));
     base.achievements.unlocked = allUnlocked;
     base.achievements.unlockedDates = Object.assign({}, c.achievements?.unlockedDates || {}, l.achievements?.unlockedDates || {});
-    base.achievements.stats = Object.assign({}, c.achievements?.stats || {}, l.achievements?.stats || {});
+    base.achievements.progress = {};
+    Object.keys(AchievementDefinitions).forEach(id => {
+      base.achievements.progress[id] = Math.max(l.achievements?.progress?.[id] || 0, c.achievements?.progress?.[id] || 0);
+    });
+
+    // Achievement Stats
+    const las = l.achievements?.stats || {};
+    const cas = c.achievements?.stats || {};
+    const as = base.achievements.stats;
+    as.totalBombsDefused = Math.max(las.totalBombsDefused || 0, cas.totalBombsDefused || 0, base.stats.totalBombsDefused);
+    as.fastDefuses = Math.max(las.fastDefuses || 0, cas.fastDefuses || 0);
+    as.closeCalls = Math.max(las.closeCalls || 0, cas.closeCalls || 0);
+    as.lastMillisecondCalls = Math.max(las.lastMillisecondCalls || 0, cas.lastMillisecondCalls || 0);
+    as.speedDemonCount = Math.max(las.speedDemonCount || 0, cas.speedDemonCount || 0);
+    as.streakBest = Math.max(base.bestStreak, las.streakBest || 0, cas.streakBest || 0);
+    as.noPowerStreak = Math.max(las.noPowerStreak || 0, cas.noPowerStreak || 0);
+    as.noPowerTotal = Math.max(las.noPowerTotal || 0, cas.noPowerTotal || 0);
+    as.coinsSpent = Math.max(las.coinsSpent || 0, cas.coinsSpent || 0, base.stats.totalCoinsSpent);
+    as.upgradesPurchased = Math.max(las.upgradesPurchased || 0, cas.upgradesPurchased || 0, base.stats.totalUpgradesPurchased);
+    as.powersUsedCount = Math.max(las.powersUsedCount || 0, cas.powersUsedCount || 0, base.stats.totalPowersUsed);
+    as.secondChanceSurvivals = Math.max(las.secondChanceSurvivals || 0, cas.secondChanceSurvivals || 0);
+    as.ruleTypesSolved = Array.from(new Set([...(las.ruleTypesSolved || []), ...(cas.ruleTypesSolved || []), ...base.stats.rulesMastered]));
+    as.nonColorRulesSolved = Math.max(las.nonColorRulesSolved || 0, cas.nonColorRulesSolved || 0);
+    as.difficultRulesSolved = Math.max(las.difficultRulesSolved || 0, cas.difficultRulesSolved || 0);
+    as.powersUsedTypes = Array.from(new Set([...(las.powersUsedTypes || []), ...(cas.powersUsedTypes || [])]));
+    as.dailyChallengesCompleted = Math.max(las.dailyChallengesCompleted || 0, cas.dailyChallengesCompleted || 0, base.stats.totalDailyChallengesCompleted);
+    as.highestCoinBalance = Math.max(base.coins, las.highestCoinBalance || 0, cas.highestCoinBalance || 0);
+    base.stats.achievementsUnlocked = Math.max(ls.achievementsUnlocked, cs.achievementsUnlocked, allUnlocked.length);
 
     // Account: preserve authenticated cloud account identity
     base.account = c.account.mode === "registered" ? c.account : l.account;
@@ -519,6 +617,7 @@ const CloudSaveManager = (() => {
       }
       payload.updatedAt = new Date().toISOString();
       await db.collection("users").doc(user.uid).set(payload, { merge: true });
+      _hasCloudSave = true;
       return { status: "SUCCESS", message: "Cloud save synchronized." };
     } catch (err) {
       console.warn("[CloudSaveManager] uploadSave error:", err);
@@ -542,6 +641,7 @@ const CloudSaveManager = (() => {
       const doc = await db.collection("users").doc(user.uid).get();
       if (doc && doc.exists) {
         const cloudData = doc.data();
+        _hasCloudSave = true;
         return { status: "SUCCESS", data: cloudData };
       }
       return { status: "NO_CLOUD_SAVE" };
@@ -559,24 +659,18 @@ const CloudSaveManager = (() => {
       const res = await downloadSave();
       if (res.status === "SUCCESS" && res.data) {
         const cloudData = res.data;
-        const conflict = detectConflict(profile, cloudData);
-        if (conflict.hasConflict) {
-          showConflictModal(profile, cloudData, (resolvedSave) => {
-            profile = resolvedSave;
-            SaveManager.save(profile, true);
-            refreshPersistentUI();
-            updateMenuAccountBadge();
-          });
-          return { status: "CONFLICT_MODAL_SHOWN" };
-        } else {
-          profile = mergeSaves(profile, cloudData);
-          SaveManager.save(profile, true);
-          refreshPersistentUI();
-          updateMenuAccountBadge();
-          return { status: "MERGED" };
-        }
+        _hasCloudSave = true;
+        profile = mergeSaves(profile, cloudData);
+        LocalSaveManager.save(profile);
+        await uploadSave(profile);
+        refreshPersistentUI();
+        updateMenuAccountBadge();
+        DailyGoalsManager.updateBadge();
+        AchievementUI.updateBadge();
+        return { status: "MERGED" };
       } else if (res.status === "NO_CLOUD_SAVE") {
         await uploadSave(profile);
+        _hasCloudSave = true;
         return { status: "FIRST_UPLOAD_SUCCESS" };
       }
       return { status: "LOCAL_SOURCE_OF_TRUTH" };
@@ -589,6 +683,7 @@ const CloudSaveManager = (() => {
   return {
     initialize,
     hasCloudSave,
+    setHasCloudSave,
     createSnapshot,
     detectConflict,
     showConflictModal,
@@ -861,6 +956,20 @@ const SaveManager = (() => {
   }
 
   let cloudSaveTimeout = null;
+  let pendingSaveData = null;
+  let saveMicrotaskScheduled = false;
+
+  function flushLocalSave() {
+    if (!pendingSaveData) return;
+    const dataToSave = pendingSaveData;
+    pendingSaveData = null;
+    saveMicrotaskScheduled = false;
+    const normalized = normalize(dataToSave);
+    LocalSaveManager.save(normalized);
+    if (AuthManager?.isAuthenticated?.()) {
+      scheduleCloudSave(normalized);
+    }
+  }
 
   function scheduleCloudSave(saveData) {
     if (!AuthManager?.isAuthenticated?.() || (typeof navigator !== "undefined" && !navigator.onLine)) return;
@@ -873,16 +982,31 @@ const SaveManager = (() => {
   }
 
   function save(data, immediateCloud = false) {
-    const normalized = normalize(data);
-    LocalSaveManager.save(normalized);
-    if (AuthManager?.isAuthenticated?.()) {
-      if (immediateCloud) {
-        if (cloudSaveTimeout) clearTimeout(cloudSaveTimeout);
+    pendingSaveData = data || profile;
+    if (immediateCloud) {
+      if (cloudSaveTimeout) clearTimeout(cloudSaveTimeout);
+      const normalized = normalize(pendingSaveData);
+      pendingSaveData = null;
+      saveMicrotaskScheduled = false;
+      LocalSaveManager.save(normalized);
+      if (AuthManager?.isAuthenticated?.()) {
         CloudSaveManager.uploadSave(normalized).catch(err => {
           console.warn("[SaveManager] Immediate cloud upload error:", err);
         });
+      }
+      return;
+    }
+
+    if (AuthManager?.isAuthenticated?.()) {
+      scheduleCloudSave(pendingSaveData);
+    }
+
+    if (!saveMicrotaskScheduled) {
+      saveMicrotaskScheduled = true;
+      if (typeof queueMicrotask === "function") {
+        queueMicrotask(flushLocalSave);
       } else {
-        scheduleCloudSave(normalized);
+        setTimeout(flushLocalSave, 0);
       }
     }
   }
@@ -894,7 +1018,7 @@ const SaveManager = (() => {
     return data;
   }
 
-  return { load, save, reset, normalize, defaults, Local: LocalSaveManager, Cloud: CloudSaveManager };
+  return { load, save, flush: flushLocalSave, reset, normalize, defaults, Local: LocalSaveManager, Cloud: CloudSaveManager };
 })();
 
 let profile = SaveManager.load();
@@ -2014,7 +2138,15 @@ function newRun() {
     runStartTime: performance.now(),
   };
 }
-function showScreen(name) { Object.values(screens).forEach(screen => screen?.classList.remove("active")); screens[name]?.classList.add("active"); }
+function closeAccountPopup() {
+  if (el.menuAccountPopup) el.menuAccountPopup.style.display = "none";
+  if (el.btnMenuAvatar) el.btnMenuAvatar.setAttribute("aria-expanded", "false");
+}
+function showScreen(name) {
+  closeAccountPopup();
+  Object.values(screens).forEach(screen => screen?.classList.remove("active"));
+  screens[name]?.classList.add("active");
+}
 function later(callback, milliseconds) { const id = setTimeout(() => { pendingTimeouts.delete(id); callback(); }, milliseconds); pendingTimeouts.add(id); return id; }
 function clearPendingTransitions() { pendingTimeouts.forEach(id => clearTimeout(id)); pendingTimeouts.clear(); }
 function setBombStatus(status) {
@@ -3607,7 +3739,7 @@ const AuthManager = (() => {
     });
   }
 
-  function handleAuthStateChanged(user) {
+  async function handleAuthStateChanged(user) {
     if (user) {
       let providerName = "email";
       if (user.providerData && user.providerData.length > 0) {
@@ -3629,13 +3761,29 @@ const AuthManager = (() => {
         }
       }
 
-      SaveManager.save(profile, true);
+      // Save credentials locally first (do not immediate upload until cloud is downloaded and merged)
+      LocalSaveManager.save(profile);
+      updateMenuAccountBadge();
+      updateNetworkBadge();
+
+      // Initiate cloud download, deterministic merge, and upload
+      if (typeof CloudSaveManager !== "undefined" && typeof CloudSaveManager.sync === "function") {
+        showToast("SYNCING ACCOUNT...", "neutral", 2500);
+        try {
+          const syncRes = await CloudSaveManager.sync();
+          if (syncRes.status === "MERGED" || syncRes.status === "FIRST_UPLOAD_SUCCESS") {
+            showToast("ACCOUNT SYNCED", "success", 2500);
+          }
+        } catch (err) {
+          console.warn("[AuthManager] CloudSave sync error:", err);
+        }
+      }
+
       refreshPersistentUI();
       updateMenuAccountBadge();
       updateNetworkBadge();
-      if (typeof CloudSaveManager !== "undefined" && typeof CloudSaveManager.sync === "function") {
-        CloudSaveManager.sync().catch((err) => { console.warn("[AuthManager] CloudSave sync error:", err); });
-      }
+      DailyGoalsManager.updateBadge();
+      AchievementUI.updateBadge();
 
       // Automatically navigate from auth screens to main menu
       if (screens["login"]?.classList.contains("active") || 
@@ -3644,6 +3792,9 @@ const AuthManager = (() => {
         returnToMenu();
       }
     } else {
+      if (typeof CloudSaveManager !== "undefined") {
+        CloudSaveManager.setHasCloudSave?.(false);
+      }
       updateMenuAccountBadge();
       updateNetworkBadge();
     }
@@ -3705,10 +3856,10 @@ const AuthManager = (() => {
   async function loginWithGoogle() {
     const res = await providers.google.login();
     if (res.success && res.user) {
-      handleAuthStateChanged(res.user);
+      await handleAuthStateChanged(res.user);
       AudioManager.playProfileSaved();
       HapticsManager.profileSaved();
-      showToast(`SIGNED IN AS ${profile.account.displayName.toUpperCase()}`, "success");
+      showToast(`SIGNED IN AS ${profile.account.displayName.toUpperCase()}`, "success", 2500);
       return { success: true, user: res.user };
     }
     return res;
@@ -3717,10 +3868,10 @@ const AuthManager = (() => {
   async function loginWithFacebook() {
     const res = await providers.facebook.login();
     if (res.success && res.user) {
-      handleAuthStateChanged(res.user);
+      await handleAuthStateChanged(res.user);
       AudioManager.playProfileSaved();
       HapticsManager.profileSaved();
-      showToast(`SIGNED IN AS ${profile.account.displayName.toUpperCase()}`, "success");
+      showToast(`SIGNED IN AS ${profile.account.displayName.toUpperCase()}`, "success", 2500);
       return { success: true, user: res.user };
     }
     return res;
@@ -3729,10 +3880,10 @@ const AuthManager = (() => {
   async function loginWithEmail(email, password) {
     const res = await providers.email.login(email, password);
     if (res.success && res.user) {
-      handleAuthStateChanged(res.user);
+      await handleAuthStateChanged(res.user);
       AudioManager.playProfileSaved();
       HapticsManager.profileSaved();
-      showToast(`SIGNED IN AS ${profile.account.displayName.toUpperCase()}`, "success");
+      showToast(`SIGNED IN AS ${profile.account.displayName.toUpperCase()}`, "success", 2500);
       return { success: true, user: res.user };
     }
     return res;
@@ -3745,10 +3896,10 @@ const AuthManager = (() => {
         const val = validateDisplayName(displayName);
         if (val.valid) profile.account.displayName = val.name;
       }
-      handleAuthStateChanged(res.user);
+      await handleAuthStateChanged(res.user);
       AudioManager.playProfileSaved();
       HapticsManager.profileSaved();
-      showToast("ACCOUNT CREATED SUCCESSFULLY!", "success");
+      showToast("ACCOUNT CREATED SUCCESSFULLY!", "success", 2500);
       return { success: true, user: res.user };
     }
     return res;
@@ -3763,7 +3914,7 @@ const AuthManager = (() => {
     profile.account.provider = "guest";
     SaveManager.save(profile);
     updateMenuAccountBadge();
-    showToast("PLAYING AS GUEST · LOCAL SAVE", "neutral");
+    showToast("PLAYING AS GUEST · LOCAL SAVE", "neutral", 2500);
     showScreen("menu");
   }
 
@@ -3771,11 +3922,14 @@ const AuthManager = (() => {
     await FirebaseManager.signOut();
     profile.account.mode = "guest";
     profile.account.provider = "guest";
+    if (typeof CloudSaveManager !== "undefined") {
+      CloudSaveManager.setHasCloudSave?.(false);
+    }
     SaveManager.save(profile);
     AudioManager.playLogout();
     HapticsManager.logout();
     updateMenuAccountBadge();
-    showToast("LOGGED OUT · GUEST MODE", "neutral");
+    showToast("LOGGED OUT · GUEST MODE", "neutral", 2500);
     showScreen("menu");
   }
 
@@ -3941,18 +4095,47 @@ function updateMenuAccountBadge() {
   const avatarDef = AuthManager.getAvatarDef(acc.avatar);
   const isOnline = typeof navigator !== "undefined" ? navigator.onLine : true;
   const netText = isOnline ? "ONLINE" : "OFFLINE";
+  const isRegistered = Boolean(acc.mode === "registered" && acc.userId);
 
-  if (el.menuAvatarIcon) el.menuAvatarIcon.textContent = avatarDef.icon;
+  // Top-Right Avatar button
+  if (el.menuAvatarIcon) {
+    el.menuAvatarIcon.textContent = isRegistered ? avatarDef.icon : "💣";
+  }
+
+  // Popup Menu elements
+  if (el.popupAvatarIcon) {
+    el.popupAvatarIcon.textContent = isRegistered ? avatarDef.icon : "💣";
+  }
+  if (el.popupDisplayName) {
+    el.popupDisplayName.textContent = acc.displayName || (isRegistered ? "Player" : "Guest");
+  }
+  if (el.popupEmail) {
+    el.popupEmail.textContent = isRegistered ? (acc.email || acc.provider.toUpperCase()) : "GUEST";
+  }
+  if (el.popupStatusText) {
+    el.popupStatusText.textContent = netText;
+  }
+  if (el.popupStatusDot) {
+    el.popupStatusDot.textContent = isOnline ? "●" : "○";
+  }
+  if (el.popupAuthActions) {
+    el.popupAuthActions.style.display = isRegistered ? "flex" : "none";
+  }
+  if (el.popupGuestActions) {
+    el.popupGuestActions.style.display = isRegistered ? "none" : "flex";
+  }
+
+  // Fallback legacy badge elements
   if (el.menuDisplayName) el.menuDisplayName.textContent = acc.displayName || "Guest";
   if (el.menuAccountStatus) {
-    el.menuAccountStatus.textContent = acc.mode === "registered" ? `${acc.provider.toUpperCase()} · ${netText}` : `DEVICE SAVE · ${netText}`;
+    el.menuAccountStatus.textContent = isRegistered ? `${acc.provider.toUpperCase()} · ${netText}` : `DEVICE SAVE · ${netText}`;
   }
   if (el.guestNoticeBanner) {
-    el.guestNoticeBanner.style.display = acc.mode === "registered" ? "none" : "block";
+    el.guestNoticeBanner.style.display = isRegistered ? "none" : "block";
   }
   const btnPlay = byId("btn-play");
   if (btnPlay) {
-    btnPlay.textContent = acc.mode === "registered" ? "PLAY NORMAL" : "PLAY AS GUEST";
+    btnPlay.textContent = isRegistered ? "PLAY NORMAL" : "PLAY AS GUEST";
   }
 }
 
@@ -4079,6 +4262,7 @@ function startGame() {
   clearPendingTransitions();
   Timer.stop();
   PowerManager.cleanup();
+  AudioManager.init();
   gameMode = "NORMAL";
   run = newRun();
   state = "PLAYING";
@@ -4103,6 +4287,7 @@ function startDailyChallenge() {
   clearPendingTransitions();
   Timer.stop();
   PowerManager.cleanup();
+  AudioManager.init();
   gameMode = "DAILY";
 
   if (!cachedDailyChallenge) {
@@ -4202,11 +4387,16 @@ function renderWires(wires) {
 
 function cutWire(index, wireEl) {
   if (state !== "PLAYING" || run.inputLocked) return;
+  // Compute spatial coordinates before mutating element classes to prevent layout thrashing
+  const rect = wireEl.getBoundingClientRect();
+  const stage = byId("bomb-stage")?.getBoundingClientRect() || { left: 0, top: 0 };
+  const x = rect.left + rect.width / 2 - stage.left;
+  const y = rect.top + rect.height * 0.42 - stage.top;
+
   PowerManager.clearScanner();
   run.inputLocked = true;
   wireEl.classList.add("pressed", "cut");
   AudioManager.playWireCut();
-  const rect = wireEl.getBoundingClientRect(), stage = byId("bomb-stage").getBoundingClientRect(), x = rect.left + rect.width / 2 - stage.left, y = rect.top + rect.height * .42 - stage.top;
 
   if (index === run.bomb.challenge.answerIndex) {
     defuse(wireEl, x, y);
@@ -4585,7 +4775,8 @@ function renderTimer(remaining, total) {
     el.timerValue.textContent = formatted;
     lastRenderedTimerSec = formatted;
   }
-  el.timerBarFill.style.width = `${(remaining / total) * 100}%`;
+  const ratio = Math.max(0, Math.min(1, remaining / total));
+  el.timerBarFill.style.transform = `scaleX(${ratio})`;
 
   const alertState = remaining <= 1.5 ? "critical" : remaining <= 3.0 ? "danger" : remaining <= 5.0 ? "warning" : "normal";
   if (alertState !== lastTimerAlertState) {
@@ -4654,7 +4845,7 @@ function toggleSound() {
   AudioManager.setSoundEnabled(profile.soundEnabled);
   SaveManager.save(profile);
   updateSoundUI();
-  showToast(profile.soundEnabled ? "SOUND ENABLED" : "SOUND MUTED", "neutral");
+  showToast(profile.soundEnabled ? "SOUND ENABLED" : "SOUND MUTED", "neutral", 2500);
 }
 
 function refreshPersistentUI() {
@@ -4723,44 +4914,78 @@ function showStreakFeedback(streak) {
   later(() => node.remove(), 780);
 }
 
-function showToast(message, tone = "neutral") {
+let toastTimeoutId = null;
+
+function showToast(message, tone = "neutral", duration = 2500) {
+  if (!el.progressToast) return;
+  if (toastTimeoutId) {
+    clearTimeout(toastTimeoutId);
+    toastTimeoutId = null;
+  }
   el.progressToast.textContent = message;
   el.progressToast.className = `progress-toast show ${tone}`;
-  later(() => el.progressToast.className = "progress-toast", 1200);
+  toastTimeoutId = setTimeout(() => {
+    if (el.progressToast) {
+      el.progressToast.className = "progress-toast";
+    }
+    toastTimeoutId = null;
+  }, duration);
 }
 
+const ParticlePool = (() => {
+  const MAX_POOL = 24;
+  const pool = [];
+
+  function init() {
+    if (!el.particleLayer || pool.length > 0) return;
+    const docFrag = document.createDocumentFragment();
+    for (let i = 0; i < MAX_POOL; i++) {
+      const p = document.createElement("div");
+      p.className = "particle spark";
+      p.style.display = "none";
+      docFrag.appendChild(p);
+      pool.push({ el: p, inUse: false });
+    }
+    el.particleLayer.appendChild(docFrag);
+  }
+
+  function spawn(x, y, color, count = 16, spread = 90) {
+    init();
+    const prefersReduced = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReduced) {
+      count = Math.max(2, Math.round(count * 0.25));
+    } else if (typeof window !== "undefined" && window.innerWidth < 480) {
+      count = Math.max(4, Math.min(count, 8));
+    }
+
+    for (let i = 0; i < count; i++) {
+      let item = pool.find(p => !p.inUse);
+      if (!item) break;
+      item.inUse = true;
+      const size = 3 + Math.random() * 4;
+      const angle = Math.random() * Math.PI * 2;
+      const distance = 14 + Math.random() * (spread * 0.85);
+      const duration = 240 + Math.random() * 180;
+      const pEl = item.el;
+      pEl.style.cssText = `display:block;width:${size}px;height:${size}px;background:${color};left:${x}px;top:${y}px;transform:translate3d(0,0,0);will-change:transform,opacity;`;
+
+      const anim = pEl.animate([
+        { transform: "translate3d(0,0,0) scale(1)", opacity: 1 },
+        { transform: `translate3d(${Math.cos(angle) * distance}px,${Math.sin(angle) * distance}px,0) scale(0.2)`, opacity: 0 }
+      ], { duration, easing: "cubic-bezier(0.1, 0.7, 0.2, 1)" });
+
+      anim.onfinish = () => {
+        pEl.style.display = "none";
+        item.inUse = false;
+      };
+    }
+  }
+
+  return { init, spawn };
+})();
+
 function createParticles(x, y, color, count = 16, spread = 90) {
-  const prefersReduced = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  if (prefersReduced) {
-    count = Math.max(2, Math.round(count * 0.25));
-  } else if (typeof window !== "undefined" && window.innerWidth < 480) {
-    count = Math.max(4, Math.min(count, 8));
-  }
-
-  const docFrag = document.createDocumentFragment();
-  const particles = [];
-
-  for (let i = 0; i < count; i += 1) {
-    const particle = document.createElement("div");
-    const size = 3 + Math.random() * 4;
-    const angle = Math.random() * Math.PI * 2;
-    const distance = 14 + Math.random() * (spread * 0.85);
-    const duration = 240 + Math.random() * 180;
-    particle.className = "particle spark";
-    particle.style.cssText = `width:${size}px;height:${size}px;background:${color};left:${x}px;top:${y}px;transform:translate3d(0,0,0);will-change:transform,opacity;`;
-    docFrag.appendChild(particle);
-    particles.push({ el: particle, angle, distance, duration });
-  }
-
-  el.particleLayer.appendChild(docFrag);
-
-  particles.forEach(({ el: particle, angle, distance, duration }) => {
-    particle.animate([
-      { transform: "translate3d(0,0,0) scale(1)", opacity: 1 },
-      { transform: `translate3d(${Math.cos(angle) * distance}px,${Math.sin(angle) * distance}px,0) scale(0.2)`, opacity: 0 }
-    ], { duration, easing: "cubic-bezier(0.1, 0.7, 0.2, 1)" });
-    later(() => particle.remove(), duration + 20);
-  });
+  ParticlePool.spawn(x, y, color, count, spread);
 }
 
 function pauseGame() {
@@ -4928,11 +5153,18 @@ Object.keys(PowerDefinitions).forEach(id => {
 });
 
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden && state === "PLAYING") pauseGame();
+  if (document.hidden) {
+    SaveManager.flush?.();
+    if (state === "PLAYING") pauseGame();
+  }
 });
 
 document.addEventListener("keydown", event => {
   if (event.key === "Escape") {
+    if (el.menuAccountPopup && el.menuAccountPopup.style.display === "block") {
+      closeAccountPopup();
+      return;
+    }
     if (state === "PLAYING") {
       pauseGame();
       return;
@@ -5061,24 +5293,64 @@ if (byId("btn-daily-share")) {
   });
 }
 
-// Phase 8: Player Accounts, Profile & Settings Event Handlers
-if (byId("btn-menu-profile")) {
-  byId("btn-menu-profile").addEventListener("click", () => {
+// Phase 8 & 10: Player Accounts, Profile & Settings Event Handlers
+function toggleAccountPopup(e) {
+  if (e) {
+    e.stopPropagation();
+    e.preventDefault();
+  }
+  if (!el.menuAccountPopup) return;
+  const isOpen = el.menuAccountPopup.style.display === "block";
+  if (isOpen) {
+    closeAccountPopup();
+  } else {
+    updateMenuAccountBadge();
+    el.menuAccountPopup.style.display = "block";
+    if (el.btnMenuAvatar) {
+      el.btnMenuAvatar.setAttribute("aria-expanded", "true");
+    }
+  }
+}
+
+if (el.btnMenuAvatar) {
+  el.btnMenuAvatar.addEventListener("click", toggleAccountPopup);
+}
+
+if (el.btnPopupSettings) {
+  el.btnPopupSettings.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeAccountPopup();
     ProfileUI.render();
-    showScreen("profile");
+    showScreen("account-settings");
   });
 }
 
-if (byId("btn-menu-auth")) {
-  byId("btn-menu-auth").addEventListener("click", () => {
-    if (AuthManager.isAuthenticated()) {
-      ProfileUI.render();
-      showScreen("profile");
-    } else {
-      showScreen("login");
-    }
+if (el.btnPopupLogout) {
+  el.btnPopupLogout.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeAccountPopup();
+    showScreen("logout-confirm");
   });
 }
+
+if (el.btnPopupSignin) {
+  el.btnPopupSignin.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeAccountPopup();
+    showScreen("login");
+  });
+}
+
+// Global click-outside listener to close account popup
+document.addEventListener("click", (e) => {
+  if (el.menuAccountPopup && el.menuAccountPopup.style.display === "block") {
+    if (!el.menuAccountPopup.contains(e.target) && !el.btnMenuAvatar?.contains(e.target)) {
+      closeAccountPopup();
+    }
+  }
+});
+
+
 
 let isAuthInProgress = false;
 
