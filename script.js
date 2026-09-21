@@ -30,6 +30,73 @@ const GameConfig = {
   },
 };
 
+const EndlessTimerConfig = {
+  minTime: 3.0,
+  maxTimeBank: 6.0,
+  tiers: [
+    { maxBomb: 3, baseTime: 8.0 },
+    { maxBomb: 6, baseTime: 7.0 },
+    { maxBomb: 9, baseTime: 6.0 },
+    { maxBomb: 14, baseTime: 5.0 },
+    { maxBomb: 20, baseTime: 4.0 },
+    { maxBomb: Infinity, baseTime: 3.5 }
+  ]
+};
+
+function getEndlessBaseTime(bombNumber) {
+  const tier = EndlessTimerConfig.tiers.find(t => bombNumber <= t.maxBomb) || EndlessTimerConfig.tiers.at(-1);
+  return Math.max(EndlessTimerConfig.minTime, tier.baseTime);
+}
+
+const ENDLESS_BASE_TIME = 8.0;
+const MAX_TIME_BANK = 6.0;
+
+const TimeBankCarryover = {
+  easy: 1.0,      // 100%
+  normal: 1.0,    // 100%
+  hard: 0.75,     // 75%
+  veryHard: 0.50, // 50%
+  extreme: 0.25,  // 25%
+};
+
+const EndlessDifficultyConfig = {
+  easy: { key: "easy", label: "EASY", wires: [3, 4], rules: ["color", "position", "onlyColor", "count"], bonus: 0, tensionBase: 0.0 },
+  normal: { key: "normal", label: "NORMAL", wires: [3, 4], rules: ["color", "position", "length", "onlyColor", "signal", "order"], bonus: 50, tensionBase: 0.15 },
+  hard: { key: "hard", label: "HARD", wires: [4, 5], rules: ["color", "position", "length", "relation", "signal", "led", "adjacency"], bonus: 100, tensionBase: 0.30 },
+  veryHard: { key: "veryHard", label: "VERY HARD", wires: [4, 5], rules: ["position", "length", "relation", "combination", "signal", "led", "adjacency", "order"], bonus: 175, tensionBase: 0.45 },
+  extreme: { key: "extreme", label: "EXTREME", wires: [5, 6], rules: ["length", "relation", "combination", "memory", "signal", "led", "adjacency", "order"], bonus: 250, tensionBase: 0.60 },
+};
+
+function getEndlessDifficulty(bombNumber) {
+  if (bombNumber <= 3) return "easy";
+  if (bombNumber <= 6) return "normal";
+  if (bombNumber <= 9) return "hard";
+  if (bombNumber <= 14) return "veryHard";
+  return "extreme";
+}
+
+function getStreakMultiplier(streak) {
+  if (streak >= 20) return 3.0;
+  if (streak >= 10) return 2.0;
+  if (streak >= 5) return 1.5;
+  if (streak >= 3) return 1.2;
+  return 1.0;
+}
+
+function calculateTension(remaining, duration, difficultyKey = "easy", streak = 0, bombNumber = 1, phaseBonus = 0, eventBonus = 0) {
+  const diffCfg = EndlessDifficultyConfig[difficultyKey] || EndlessDifficultyConfig.easy;
+  const timePct = duration > 0 ? Math.max(0, Math.min(1, remaining / duration)) : 0;
+  const dangerPct = 1.0 - timePct;
+  const tension = Math.min(1.0, Math.max(0.0,
+    diffCfg.tensionBase * 0.50 +
+    dangerPct * 0.35 +
+    Math.min(0.10, (streak * 0.01) + (bombNumber * 0.002)) +
+    (Number(phaseBonus) || 0) +
+    (Number(eventBonus) || 0)
+  ));
+  return Number(tension.toFixed(3));
+}
+
 const WIRE_COLOR_MAP = {
   red: "#ff4757",
   blue: "#3a86ff",
@@ -49,9 +116,18 @@ const UpgradeDefinitions = {
 
 const PowerDefinitions = {
   scanner: { name: "SCANNER", icon: "🔍", description: "Temporarily highlights 1 incorrect wire for 1.5 seconds.", effect: "Highlights 1 wrong wire (1.5s)", price: 25 },
+  timeSlow: { name: "TIME SLOW", icon: "⏱", description: "Reduces timer countdown speed by 50% for 5 seconds.", effect: "Reduces timer speed by 50% (5s)", price: 30 },
   timeFreeze: { name: "TIME FREEZE", icon: "❄", description: "Freezes the fuse timer countdown for 3 seconds.", effect: "Freezes countdown for 3s", price: 35 },
   secondChance: { name: "SECOND CHANCE", icon: "🛡", description: "Absorbs 1 wrong wire cut on the active bomb.", effect: "Protects against 1 wrong cut", price: 50 },
 };
+
+const BombVisualVariants = [
+  { id: "military", className: "variant-military", label: "SYS // MIL-01" },
+  { id: "redAlert", className: "variant-redalert", label: "SYS // ALERT-02" },
+  { id: "cybernetic", className: "variant-cybernetic", label: "SYS // CYBER-03" },
+  { id: "industrial", className: "variant-industrial", label: "SYS // IND-04" },
+  { id: "unstable", className: "variant-unstable", label: "SYS // FLUX-05" },
+];
 
 const AchievementDefinitions = {
   // GAMEPLAY
@@ -93,28 +169,105 @@ const AchievementDefinitions = {
 };
 
 const screens = Object.fromEntries([
-  "menu", "game", "pause", "result", "daily-result", "achievements", "shop", "reset", "tutorial", "stats", "daily-goals", "login-reward",
-  "login", "register", "forgot-password", "profile", "avatar-picker", "account-settings", "delete-account", "logout-confirm", "sync-conflict"
+  "menu", "game", "pause", "result", "daily-result", "achievements", "shop", "reset", "tutorial", "stats", "daily-goals", "login-reward", "endless-briefing",
+  "login", "register", "forgot-password", "profile", "avatar-picker", "settings", "account-settings", "delete-account", "logout-confirm", "sync-conflict",
+  "campaign-select", "campaign-briefing", "campaign-result"
 ].map(name => [name, document.getElementById(`screen-${name}`)]));
 
 const el = {
-  menuBestScore: byId("menu-best-score"), menuBestStreak: byId("menu-best-streak"), menuCoins: byId("menu-coins"), shopCoins: byId("shop-coins"), hudCoins: byId("hud-coins"),
+  menuBestScore: byId("menu-best-score"), menuBestStreak: byId("menu-best-streak"), shopCoins: byId("shop-coins"),
   hudScore: byId("hud-score"), hudBest: byId("hud-best"), hudBombLabel: byId("hud-bomb-label"), hudStreak: byId("hud-streak"),
+  hudTimeBank: byId("hud-time-bank"),
+  resultDifficulty: byId("result-difficulty"), btnStartEndlessRun: byId("btn-start-endless-run"), btnCloseEndlessBriefing: byId("btn-close-endless-briefing"),
   timerValue: byId("timer-value"), timerBarFill: byId("timer-bar-fill"), timerWrap: document.querySelector(".timer-wrap"), instruction: byId("instruction"), bomb: byId("bomb"), bombScreenText: byId("bomb-screen-text"), wiresContainer: byId("wires-container"),
   particleLayer: byId("particle-layer"), feedbackLayer: byId("feedback-layer"), flashOverlay: byId("flash-overlay"),
   resultTitle: byId("result-title"), resultMessage: byId("result-message"), resultScore: byId("result-score"), resultBest: byId("result-best"), resultBombs: byId("result-bombs"), resultStreak: byId("result-streak"), resultCoinsEarned: byId("result-coins-earned"), resultCurrentCoins: byId("result-current-coins"),
   resultComparisonBox: byId("result-comparison-box"), resultComparisonText: byId("result-comparison-text"),
   btnShareResult: byId("btn-share-result"), btnResultShop: byId("btn-result-shop"),
+  // Campaign elements
+  btnCampaign: byId("btn-campaign"),
+  btnBackCampaignSelect: byId("btn-back-campaign-select"),
+  btnPlayLevel1: byId("btn-play-level-1"),
+  btnPlayLevel2: byId("btn-play-level-2"),
+  lockIcon2: byId("lock-icon-2"),
+  descLevel2: byId("desc-level-2"),
+  levelCard1: byId("level-card-1"),
+  levelCard2: byId("level-card-2"),
+  starsLevel1: byId("stars-level-1"),
+  starsLevel2: byId("stars-level-2"),
+  levelCard3: byId("level-card-3"),
+  starsLevel3: byId("stars-level-3"),
+  lockIcon3: byId("lock-icon-3"),
+  descLevel3: byId("desc-level-3"),
+  btnPlayLevel3: byId("btn-play-level-3"),
+  levelCard4: byId("level-card-4"),
+  starsLevel4: byId("stars-level-4"),
+  lockIcon4: byId("lock-icon-4"),
+  descLevel4: byId("desc-level-4"),
+  btnPlayLevel4: byId("btn-play-level-4"),
+  levelCard5: byId("level-card-5"),
+  starsLevel5: byId("stars-level-5"),
+  lockIcon5: byId("lock-icon-5"),
+  descLevel5: byId("desc-level-5"),
+  btnPlayLevel5: byId("btn-play-level-5"),
+  levelCard6: byId("level-card-6"),
+  starsLevel6: byId("stars-level-6"),
+  lockIcon6: byId("lock-icon-6"),
+  descLevel6: byId("desc-level-6"),
+  btnPlayLevel6: byId("btn-play-level-6"),
+  levelCard7: byId("level-card-7"),
+  starsLevel7: byId("stars-level-7"),
+  lockIcon7: byId("lock-icon-7"),
+  descLevel7: byId("desc-level-7"),
+  btnPlayLevel7: byId("btn-play-level-7"),
+  levelCard8: byId("level-card-8"),
+  starsLevel8: byId("stars-level-8"),
+  lockIcon8: byId("lock-icon-8"),
+  descLevel8: byId("desc-level-8"),
+  btnPlayLevel8: byId("btn-play-level-8"),
+  circuitFlowContainer: byId("circuit-flow-container"),
+  circuitFlowBoard: byId("circuit-flow-board"),
+  circuitFlowSvg: byId("circuit-flow-svg"),
+  circuitFlowGrid: byId("circuit-flow-grid"),
+  circuitProgressChip: byId("circuit-progress-chip"),
+  signalMemoryContainer: byId("signal-memory-container"),
+  signalMemoryBoard: byId("signal-memory-board"),
+  signalMemoryGrid: byId("signal-memory-grid"),
+  signalProgressChip: byId("signal-progress-chip"),
+  wordPuzzleContainer: byId("word-puzzle-container"),
+  wordPuzzleBoard: byId("word-puzzle-board"),
+  wordPuzzleStatus: byId("word-puzzle-status"),
+  wordPuzzleChip: byId("word-puzzle-chip"),
+  wordAnswerRow: byId("word-answer-row"),
+  wordTilesGrid: byId("word-tiles-grid"),
+  btnWordClear: byId("btn-word-clear"),
+  btnWordSubmit: byId("btn-word-submit"),
+  campaignBriefingBadge: byId("campaign-briefing-badge"),
+  campaignBriefingTitle: byId("campaign-briefing-title"),
+  campaignBriefingDesc: byId("campaign-briefing-desc"),
+  campaignBriefingRules: byId("campaign-briefing-rules"),
+  btnStartCampaignLevel: byId("btn-start-campaign-level"),
+  btnCloseCampaignBriefing: byId("btn-close-campaign-briefing"),
+  campaignResultTitle: byId("campaign-result-title"),
+  campaignResultSubtitle: byId("campaign-result-subtitle"),
+  campaignStarsBanner: byId("campaign-stars-banner"),
+  resultStar1: byId("result-star-1"),
+  resultStar2: byId("result-star-2"),
+  resultStar3: byId("result-star-3"),
+  campaignResultScore: byId("campaign-result-score"),
+  campaignResultTime: byId("campaign-result-time"),
+  campaignResultCoins: byId("campaign-result-coins"),
+  btnCampaignNextLevel: byId("btn-campaign-next-level"),
+  btnCampaignReplay: byId("btn-campaign-replay"),
+  btnCampaignLevelSelect: byId("btn-campaign-level-select"),
   upgradeList: byId("upgrade-list"), powerList: byId("power-list"), progressToast: byId("progress-toast"),
-  btnSoundMenu: byId("btn-sound-menu"), btnSoundPause: byId("btn-sound-pause"), powerBar: byId("power-bar"),
+  btnSoundPause: byId("btn-sound-pause"), powerBar: byId("power-bar"),
   // Daily challenge elements
   dailyCard: byId("daily-card"), dailyDayLabel: byId("daily-day-label"), dailyStatusIndicator: byId("daily-status-indicator"), dailyStatusText: byId("daily-status-text"), dailyThemeText: byId("daily-theme-text"), btnDailyPlay: byId("btn-daily-play"),
   dailyHudBanner: byId("daily-hud-banner"), dailyHudDay: byId("daily-hud-day"), dailyProgressTracker: byId("daily-progress-tracker"), dailyHudStep: byId("daily-hud-step"),
   dailyResultTitle: byId("daily-result-title"), dailyResultIcon: byId("daily-result-icon"), dailyResultMessage: byId("daily-result-message"), dailyResultScore: byId("daily-result-score"), dailyResultBest: byId("daily-result-best"), dailyResultBombs: byId("daily-result-bombs"), dailyResultTimeBonus: byId("daily-result-time-bonus"), dailyResultReward: byId("daily-result-reward"), dailyRewardBreakdown: byId("daily-reward-breakdown"),
   btnDailyPlayNormal: byId("btn-daily-play-normal"), btnDailyShare: byId("btn-daily-share"), btnDailyMenu: byId("btn-daily-menu"),
   // Achievement elements
-  menuAchievementsBadge: byId("menu-achievements-badge"),
-  btnAchievements: byId("btn-achievements"),
   btnBackAchievements: byId("btn-back-achievements"),
   achTotalCount: byId("ach-total-count"),
   achSummaryFill: byId("ach-summary-fill"),
@@ -131,7 +284,6 @@ const el = {
   tutorialDots: byId("tutorial-dots"),
   btnInstall: byId("btn-install"),
   // Phase 8: Stats elements
-  btnStats: byId("btn-stats"),
   btnBackStats: byId("btn-back-stats"),
   statBombsDefused: byId("stat-bombs-defused"),
   statBombsFailed: byId("stat-bombs-failed"),
@@ -148,6 +300,7 @@ const el = {
   statPlayTime: byId("stat-play-time"),
   // Phase 8: Daily Goals elements
   btnDailyGoals: byId("btn-daily-goals"),
+  btnShop: byId("btn-shop"),
   btnBackDailyGoals: byId("btn-back-daily-goals"),
   menuGoalsBadge: byId("menu-goals-badge"),
   dailyGoalsList: byId("daily-goals-list"),
@@ -157,6 +310,8 @@ const el = {
   btnCloseLoginReward: byId("btn-close-login-reward"),
   // Phase 8 & 10: Player Account & Profile elements
   menuTopBar: document.querySelector(".menu-top-bar"),
+  menuCoinPill: byId("menu-coin-pill"),
+  menuCoins: byId("menu-coins"),
   btnMenuAvatar: byId("btn-menu-avatar"),
   menuAccountPopup: byId("menu-account-popup"),
   popupAvatarIcon: byId("popup-avatar-icon"),
@@ -167,7 +322,11 @@ const el = {
   popupStatusText: byId("popup-status-text"),
   popupAuthActions: byId("popup-auth-actions"),
   popupGuestActions: byId("popup-guest-actions"),
+  btnPopupProfile: byId("btn-popup-profile"),
+  btnPopupStats: byId("btn-popup-stats"),
+  btnPopupAchievements: byId("btn-popup-achievements"),
   btnPopupSettings: byId("btn-popup-settings"),
+  btnPopupGuestSettings: byId("btn-popup-guest-settings"),
   btnPopupLogout: byId("btn-popup-logout"),
   btnPopupSignin: byId("btn-popup-signin"),
   menuAvatarIcon: byId("menu-avatar-icon"),
@@ -232,11 +391,13 @@ const el = {
   btnToggleAnalytics: byId("btn-toggle-analytics"),
   btnToggleAds: byId("btn-toggle-ads"),
   btnSettingsToggleSound: byId("btn-settings-toggle-sound"),
+  btnSettingsToggleHaptics: byId("btn-settings-toggle-haptics"),
   btnSettingsToggleMotion: byId("btn-settings-toggle-motion"),
   btnExportData: byId("btn-export-data"),
   btnLogout: byId("btn-logout"),
   btnDeleteAccount: byId("btn-delete-account"),
   btnBackSettings: byId("btn-back-settings"),
+  btnBackAccountSettings: byId("btn-back-account-settings"),
   // Delete account modal elements
   inputDeleteConfirm: byId("input-delete-confirm"),
   btnConfirmDeleteAccount: byId("btn-confirm-delete-account"),
@@ -264,13 +425,14 @@ function nonNegativeInt(value) {
 const HapticsManager = {
   vibrate(pattern) {
     try {
-      if (typeof navigator !== "undefined" && "vibrate" in navigator && profile?.soundEnabled) {
+      if (typeof navigator !== "undefined" && "vibrate" in navigator && profile?.hapticsEnabled !== false && profile?.soundEnabled) {
         navigator.vibrate(pattern);
       }
     } catch {}
   },
   cutSuccess() { this.vibrate(25); },
   cutFailure() { this.vibrate([60, 40, 80]); },
+  powerActivate() { this.vibrate(30); },
   dailyReward() { this.vibrate([30, 30, 50]); },
   goalClaim() { this.vibrate([40, 30, 40]); },
   milestone() { this.vibrate([35, 25, 45]); },
@@ -562,6 +724,34 @@ const CloudSaveManager = (() => {
     as.highestCoinBalance = Math.max(base.coins, las.highestCoinBalance || 0, cas.highestCoinBalance || 0);
     base.stats.achievementsUnlocked = Math.max(ls.achievementsUnlocked, cs.achievementsUnlocked, allUnlocked.length);
 
+    // Campaign: union of unlockedLevels, max of stars, max of highScores, best of fastestTimes
+    const lCamp = l.campaign || {};
+    const cCamp = c.campaign || {};
+    const mergedUnlocked = Array.from(new Set([...(lCamp.unlockedLevels || [1]), ...(cCamp.unlockedLevels || [1])])).sort((a, b) => a - b);
+    const mergedStars = Object.assign({}, lCamp.levelStars || {}, cCamp.levelStars || {});
+    Object.keys(mergedStars).forEach(lvl => {
+      mergedStars[lvl] = Math.max(lCamp.levelStars?.[lvl] || 0, cCamp.levelStars?.[lvl] || 0);
+    });
+    const mergedHighScores = Object.assign({}, lCamp.levelHighScores || {}, cCamp.levelHighScores || {});
+    Object.keys(mergedHighScores).forEach(lvl => {
+      mergedHighScores[lvl] = Math.max(lCamp.levelHighScores?.[lvl] || 0, cCamp.levelHighScores?.[lvl] || 0);
+    });
+    const mergedFastTimes = Object.assign({}, lCamp.levelFastestTimes || {}, cCamp.levelFastestTimes || {});
+    Object.keys(mergedFastTimes).forEach(lvl => {
+      const lt = lCamp.levelFastestTimes?.[lvl] || 0;
+      const ct = cCamp.levelFastestTimes?.[lvl] || 0;
+      if (lt > 0 && ct > 0) mergedFastTimes[lvl] = Math.min(lt, ct);
+      else mergedFastTimes[lvl] = lt || ct || 0;
+    });
+
+    base.campaign = {
+      currentChapter: 1,
+      unlockedLevels: mergedUnlocked.length > 0 ? mergedUnlocked : [1],
+      levelStars: mergedStars,
+      levelHighScores: mergedHighScores,
+      levelFastestTimes: mergedFastTimes
+    };
+
     // Account: preserve authenticated cloud account identity
     base.account = c.account.mode === "registered" ? c.account : l.account;
 
@@ -714,6 +904,8 @@ const SaveManager = (() => {
     bestStreak: 0,
     bestDailyScore: 0,
     soundEnabled: true,
+    hapticsEnabled: true,
+    reducedMotion: false,
     upgrades: Object.fromEntries(Object.keys(UpgradeDefinitions).map(id => [id, 0])),
     powers: Object.fromEntries(Object.keys(PowerDefinitions).map(id => [id, 0])),
     daily: {
@@ -792,6 +984,13 @@ const SaveManager = (() => {
         highestCoinBalance: 0,
       },
     },
+    campaign: {
+      currentChapter: 1,
+      unlockedLevels: [1],
+      levelStars: { 1: 0 },
+      levelHighScores: { 1: 0 },
+      levelFastestTimes: { 1: 0 },
+    },
   });
 
   function normalize(raw) {
@@ -823,6 +1022,8 @@ const SaveManager = (() => {
     base.bestStreak = nonNegativeInt(incoming.bestStreak);
     base.bestDailyScore = nonNegativeInt(incoming.bestDailyScore);
     base.soundEnabled = incoming.soundEnabled !== undefined ? Boolean(incoming.soundEnabled) : true;
+    base.hapticsEnabled = incoming.hapticsEnabled !== undefined ? Boolean(incoming.hapticsEnabled) : true;
+    base.reducedMotion = incoming.reducedMotion !== undefined ? Boolean(incoming.reducedMotion) : false;
     
     Object.keys(base.upgrades).forEach(id => {
       const maxLvl = UpgradeDefinitions[id]?.prices?.length || 5;
@@ -946,6 +1147,45 @@ const SaveManager = (() => {
       : [];
     achStats.dailyChallengesCompleted = nonNegativeInt(incomingAchStats.dailyChallengesCompleted || s.totalDailyChallengesCompleted);
     achStats.highestCoinBalance = Math.max(base.coins, nonNegativeInt(incomingAchStats.highestCoinBalance));
+
+    const incCamp = (incoming.campaign && typeof incoming.campaign === "object" && !Array.isArray(incoming.campaign)) ? incoming.campaign : {};
+    const rawUnlocked = Array.isArray(incCamp.unlockedLevels) ? incCamp.unlockedLevels.map(n => nonNegativeInt(n)).filter(n => n >= 1) : [1];
+    if (!rawUnlocked.includes(1)) rawUnlocked.push(1);
+
+    const rawStars = (incCamp.levelStars && typeof incCamp.levelStars === "object" && !Array.isArray(incCamp.levelStars)) ? incCamp.levelStars : {};
+    const cleanStars = { 1: Math.min(3, nonNegativeInt(rawStars[1])) };
+    Object.keys(rawStars).forEach(lvl => {
+      const lvlNum = parseInt(lvl, 10);
+      if (!Number.isNaN(lvlNum) && lvlNum >= 1) {
+        cleanStars[lvlNum] = Math.min(3, Math.max(0, nonNegativeInt(rawStars[lvl])));
+      }
+    });
+
+    const rawHighScores = (incCamp.levelHighScores && typeof incCamp.levelHighScores === "object" && !Array.isArray(incCamp.levelHighScores)) ? incCamp.levelHighScores : {};
+    const cleanHighScores = { 1: nonNegativeInt(rawHighScores[1]) };
+    Object.keys(rawHighScores).forEach(lvl => {
+      const lvlNum = parseInt(lvl, 10);
+      if (!Number.isNaN(lvlNum) && lvlNum >= 1) {
+        cleanHighScores[lvlNum] = nonNegativeInt(rawHighScores[lvl]);
+      }
+    });
+
+    const rawFastTimes = (incCamp.levelFastestTimes && typeof incCamp.levelFastestTimes === "object" && !Array.isArray(incCamp.levelFastestTimes)) ? incCamp.levelFastestTimes : {};
+    const cleanFastTimes = { 1: nonNegativeInt(rawFastTimes[1]) };
+    Object.keys(rawFastTimes).forEach(lvl => {
+      const lvlNum = parseInt(lvl, 10);
+      if (!Number.isNaN(lvlNum) && lvlNum >= 1) {
+        cleanFastTimes[lvlNum] = nonNegativeInt(rawFastTimes[lvl]);
+      }
+    });
+
+    base.campaign = {
+      currentChapter: 1,
+      unlockedLevels: Array.from(new Set(rawUnlocked)).sort((a, b) => a - b),
+      levelStars: cleanStars,
+      levelHighScores: cleanHighScores,
+      levelFastestTimes: cleanFastTimes
+    };
 
     return base;
   }
@@ -1199,10 +1439,10 @@ const AudioManager = (() => {
     } catch {}
   }
 
-  function playTimerTick(remaining) {
+  function playTimerTick(remaining, difficultyKey = "easy", tension = 0) {
     if (isMuted) return;
-    const isCritical = remaining <= 1.5;
-    const isDanger = remaining <= 3;
+    const isCritical = remaining <= 1.5 || tension >= 0.85;
+    const isDanger = remaining <= 3.0 || tension >= 0.65;
     const currentUnit = isCritical ? Math.floor(remaining * 4) : isDanger ? Math.floor(remaining * 2) : Math.floor(remaining);
     if (lastTickUnit === currentUnit) return;
     lastTickUnit = currentUnit;
@@ -1213,7 +1453,8 @@ const AudioManager = (() => {
       const now = ac.currentTime;
       const osc = ac.createOscillator(), gain = ac.createGain();
       osc.type = "sine";
-      const freq = isCritical ? 960 : isDanger ? 680 : 480;
+      const diffShift = difficultyKey === "extreme" ? 160 : difficultyKey === "veryHard" ? 110 : difficultyKey === "hard" ? 60 : 0;
+      const freq = (isCritical ? 960 : isDanger ? 680 : 480) + diffShift;
       const vol = isCritical ? 0.22 : isDanger ? 0.16 : 0.09;
       osc.frequency.setValueAtTime(freq, now);
       gain.gain.setValueAtTime(vol, now);
@@ -1357,6 +1598,26 @@ const AudioManager = (() => {
       gain.connect(masterGain);
       osc.start(now);
       osc.stop(now + 0.13);
+      osc.onended = () => { osc.disconnect(); gain.disconnect(); };
+    } catch {}
+  }
+
+  function playTimeSlow() {
+    if (isMuted) return;
+    const ac = getContext();
+    if (!ac) return;
+    try {
+      const now = ac.currentTime;
+      const osc = ac.createOscillator(), gain = ac.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(640, now);
+      osc.frequency.exponentialRampToValueAtTime(180, now + 0.35);
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+      osc.connect(gain);
+      gain.connect(masterGain);
+      osc.start(now);
+      osc.stop(now + 0.38);
       osc.onended = () => { osc.disconnect(); gain.disconnect(); };
     } catch {}
   }
@@ -1712,6 +1973,68 @@ const AudioManager = (() => {
     } catch {}
   }
 
+  function playPhaseComplete() {
+    if (isMuted) return;
+    const ac = getContext();
+    if (!ac) return;
+    try {
+      const notes = [587.33, 880.0];
+      notes.forEach((freq, i) => {
+        const startTime = ac.currentTime + i * 0.04;
+        const osc = ac.createOscillator(), gain = ac.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq, startTime);
+        gain.gain.setValueAtTime(0.22, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.08);
+        osc.connect(gain);
+        gain.connect(masterGain);
+        osc.start(startTime);
+        osc.stop(startTime + 0.09);
+        osc.onended = () => { osc.disconnect(); gain.disconnect(); };
+      });
+    } catch {}
+  }
+
+  function playReconfiguration() {
+    if (isMuted) return;
+    const ac = getContext();
+    if (!ac) return;
+    try {
+      const now = ac.currentTime;
+      const osc = ac.createOscillator(), gain = ac.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(420, now);
+      osc.frequency.exponentialRampToValueAtTime(840, now + 0.12);
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+      osc.connect(gain);
+      gain.connect(masterGain);
+      osc.start(now);
+      osc.stop(now + 0.15);
+      osc.onended = () => { osc.disconnect(); gain.disconnect(); };
+    } catch {}
+  }
+
+  function playEventCue(type = "surge") {
+    if (isMuted) return;
+    const ac = getContext();
+    if (!ac) return;
+    try {
+      const now = ac.currentTime;
+      const osc = ac.createOscillator(), gain = ac.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(type === "override" ? 620 : 440, now);
+      osc.frequency.exponentialRampToValueAtTime(type === "override" ? 880 : 720, now + 0.15);
+      gain.gain.setValueAtTime(0.25, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+      osc.connect(gain);
+      gain.connect(masterGain);
+      osc.start(now);
+      osc.stop(now + 0.18);
+      osc.onended = () => { osc.disconnect(); gain.disconnect(); };
+    } catch {}
+  }
+
   return {
     init: initContext,
     setSoundEnabled,
@@ -1728,7 +2051,11 @@ const AudioManager = (() => {
     playShopPurchase,
     playShopError,
     playScanner,
+    playTimeSlow,
     playTimeFreeze,
+    playPhaseComplete,
+    playReconfiguration,
+    playEventCue,
     playDailyStart,
     playDailyProgression,
     playDailyComplete,
@@ -1786,12 +2113,18 @@ const UpgradeManager = {
 const PowerManager = (() => {
   let scannerTimeoutId = null;
   let freezeTimeoutId = null;
+  let slowTimeoutId = null;
   let activeSecondChance = false;
   let isFrozen = false;
+  let isSlowed = false;
   let purchasing = false;
 
+  function logPower(action, details = {}) {
+    console.log(`[PowerManager] ${action}:`, details);
+  }
+
   function count(id) {
-    return profile.powers?.[id] || 0;
+    return (profile && profile.powers) ? (profile.powers[id] || 0) : 0;
   }
 
   function purchase(id) {
@@ -1800,17 +2133,21 @@ const PowerManager = (() => {
     const def = PowerDefinitions[id];
     if (!def) {
       purchasing = false;
+      logPower("PURCHASE_INVALID_ID", { id });
       return { status: "invalid" };
     }
     if (profile.coins < def.price) {
       purchasing = false;
+      logPower("PURCHASE_INSUFFICIENT_COINS", { id, price: def.price, coins: profile.coins });
       return { status: "insufficient", price: def.price };
     }
+    const oldCount = profile.powers[id] || 0;
     profile.coins -= def.price;
-    profile.powers[id] = (profile.powers[id] || 0) + 1;
+    profile.powers[id] = oldCount + 1;
     SaveManager.save(profile);
     AchievementManager.onCoinsSpent(def.price);
     StatsManager.recordCoinsSpent(def.price);
+    logPower("PURCHASE_SUCCESS", { id, oldCount, newCount: profile.powers[id], coinsLeft: profile.coins });
     window.setTimeout(() => { purchasing = false; }, 180);
     return { status: "purchased", count: profile.powers[id], price: def.price };
   }
@@ -1819,24 +2156,42 @@ const PowerManager = (() => {
     if (state !== "PLAYING" || !run || run.inputLocked) return false;
     if (count(id) <= 0) return false;
     if (id === "timeFreeze" && isFrozen) return false;
+    if (id === "timeSlow" && (isSlowed || isFrozen)) return false;
     if (id === "secondChance" && activeSecondChance) return false;
     return true;
   }
 
   function activate(id) {
-    if (!canActivate(id)) return false;
-    profile.powers[id] = Math.max(0, (profile.powers[id] || 0) - 1);
+    if (!canActivate(id)) {
+      logPower("ACTIVATE_BLOCKED", { id, state, inputLocked: run?.inputLocked, currentCount: count(id), isFrozen, isSlowed, activeSecondChance });
+      return false;
+    }
+    const oldCount = count(id);
+    profile.powers[id] = Math.max(0, oldCount - 1);
     SaveManager.save(profile);
     updatePowerUI();
 
     if (run) run.powerUsedOnRun = true;
-    HapticsManager.powerActivate();
-    AchievementManager.onPowerActivated(id);
-    StatsManager.recordPowerUsed(id);
-    DailyGoalsManager.onEvent("power", 1);
+    try {
+      if (typeof HapticsManager !== "undefined" && typeof HapticsManager.powerActivate === "function") {
+        HapticsManager.powerActivate();
+      }
+    } catch {}
+
+    try {
+      AchievementManager.onPowerActivated(id);
+      StatsManager.recordPowerUsed(id);
+      DailyGoalsManager.onEvent("power", 1);
+    } catch (e) {
+      console.warn("[PowerManager] Observer event warning:", e);
+    }
+
+    logPower("ACTIVATE_SUCCESS", { id, oldCount, remainingCount: profile.powers[id] });
 
     if (id === "scanner") {
       activateScanner();
+    } else if (id === "timeSlow") {
+      activateTimeSlow();
     } else if (id === "timeFreeze") {
       activateTimeFreeze();
     } else if (id === "secondChance") {
@@ -1851,7 +2206,7 @@ const PowerManager = (() => {
     showFloatingText("SCANNER ACTIVATED", "var(--accent)");
     if (!run || !run.bomb) return;
 
-    const incorrectWires = run.bomb.wires.filter(w => w.index !== run.bomb.challenge.answerIndex);
+    const incorrectWires = run.bomb.wires.filter(w => w.index !== run.bomb.challenge.answerIndex && !w.cut);
     if (!incorrectWires.length) return;
     const target = pick(incorrectWires);
     const wireElements = el.wiresContainer.children;
@@ -1879,14 +2234,62 @@ const PowerManager = (() => {
     }
   }
 
+  function activateTimeSlow() {
+    clearSlow();
+    isSlowed = true;
+    AudioManager.playTimeSlow();
+    showFloatingText("TIME SLOWED (5s)", "#38bdf8");
+    Timer.slow(0.5);
+    if (el.timerWrap) el.timerWrap.classList.add("is-slowed");
+    if (el.timerBarFill) el.timerBarFill.classList.add("is-slowed");
+    if (el.bomb) el.bomb.classList.add("is-slowed");
+    setBombStatus("SLOW");
+    updatePowerUI();
+
+    slowTimeoutId = setTimeout(() => {
+      endSlow();
+    }, 5000);
+  }
+
+  function endSlow() {
+    if (!isSlowed) return;
+    isSlowed = false;
+    if (slowTimeoutId) {
+      clearTimeout(slowTimeoutId);
+      slowTimeoutId = null;
+    }
+    Timer.unslow();
+    if (el.timerWrap) el.timerWrap.classList.remove("is-slowed");
+    if (el.timerBarFill) el.timerBarFill.classList.remove("is-slowed");
+    if (el.bomb) el.bomb.classList.remove("is-slowed");
+    if (state === "PLAYING" && !isFrozen) {
+      setBombStatus("ARMED");
+    }
+    updatePowerUI();
+  }
+
+  function clearSlow() {
+    if (slowTimeoutId) {
+      clearTimeout(slowTimeoutId);
+      slowTimeoutId = null;
+    }
+    if (isSlowed) {
+      isSlowed = false;
+      Timer.unslow();
+      if (el.timerWrap) el.timerWrap.classList.remove("is-slowed");
+      if (el.timerBarFill) el.timerBarFill.classList.remove("is-slowed");
+      if (el.bomb) el.bomb.classList.remove("is-slowed");
+    }
+  }
+
   function activateTimeFreeze() {
     clearFreeze();
     isFrozen = true;
     AudioManager.playTimeFreeze();
     showFloatingText("TIME FROZEN (3s)", "#00e5ff");
     Timer.freeze();
-    el.timerWrap.classList.add("is-frozen");
-    el.timerBarFill.classList.add("is-frozen");
+    if (el.timerWrap) el.timerWrap.classList.add("is-frozen");
+    if (el.timerBarFill) el.timerBarFill.classList.add("is-frozen");
     setBombStatus("FROZEN");
     updatePowerUI();
 
@@ -1903,10 +2306,14 @@ const PowerManager = (() => {
       freezeTimeoutId = null;
     }
     Timer.unfreeze();
-    el.timerWrap.classList.remove("is-frozen");
-    el.timerBarFill.classList.remove("is-frozen");
+    if (el.timerWrap) el.timerWrap.classList.remove("is-frozen");
+    if (el.timerBarFill) el.timerBarFill.classList.remove("is-frozen");
     if (state === "PLAYING") {
-      setBombStatus("ARMED");
+      if (isSlowed) {
+        setBombStatus("SLOW");
+      } else {
+        setBombStatus("ARMED");
+      }
     }
     updatePowerUI();
   }
@@ -1937,11 +2344,13 @@ const PowerManager = (() => {
 
   function consumeSecondChance() {
     activeSecondChance = false;
+    logPower("SECOND_CHANCE_CONSUMED");
     updatePowerUI();
   }
 
   function cleanup() {
     clearScanner();
+    clearSlow();
     clearFreeze();
     activeSecondChance = false;
     updatePowerUI();
@@ -1957,6 +2366,7 @@ const PowerManager = (() => {
     consumeSecondChance,
     cleanup,
     get isFrozen() { return isFrozen; },
+    get isSlowed() { return isSlowed; },
     get activeSecondChance() { return activeSecondChance; }
   };
 })();
@@ -1964,6 +2374,8 @@ const PowerManager = (() => {
 const Timer = (() => {
   let frameId = null, startedAt = 0, duration = 0, remaining = 0, onTick = null, onExpired = null;
   let isFrozen = false, freezeStartedAt = 0, lastTickTime = 0;
+  let timeScale = 1.0;
+  let isSlowed = false;
 
   function tick(now) {
     if (isFrozen) {
@@ -1971,13 +2383,13 @@ const Timer = (() => {
       frameId = requestAnimationFrame(tick);
       return;
     }
-    const deltaSeconds = (now - lastTickTime) / 1000;
+    const deltaSeconds = Math.max(0, (now - lastTickTime) / 1000);
     lastTickTime = now;
     if (deltaSeconds > 0 && deltaSeconds < 1.0) {
       StatsManager.addPlayTime(deltaSeconds);
+      remaining = Math.max(0, remaining - deltaSeconds * timeScale);
     }
 
-    remaining = Math.max(0, duration - (now - startedAt) / 1000);
     onTick?.(remaining, duration);
     if (remaining <= 0) {
       frameId = null;
@@ -1989,6 +2401,8 @@ const Timer = (() => {
   function start(seconds, tickHandler, expiredHandler) {
     stop();
     isFrozen = false;
+    isSlowed = false;
+    timeScale = 1.0;
     duration = seconds;
     remaining = seconds;
     onTick = tickHandler;
@@ -2008,7 +2422,6 @@ const Timer = (() => {
   }
   function resume() {
     if (frameId === null && remaining > 0) {
-      startedAt = performance.now() - (duration - remaining) * 1000;
       lastTickTime = performance.now();
       frameId = requestAnimationFrame(tick);
     }
@@ -2022,65 +2435,392 @@ const Timer = (() => {
   function unfreeze() {
     if (isFrozen) {
       isFrozen = false;
-      const frozenDuration = performance.now() - freezeStartedAt;
-      startedAt += frozenDuration;
       lastTickTime = performance.now();
     }
+  }
+  function slow(scale = 0.5) {
+    timeScale = scale;
+    isSlowed = true;
+  }
+  function unslow() {
+    timeScale = 1.0;
+    isSlowed = false;
   }
   function stop() {
     if (frameId !== null) cancelAnimationFrame(frameId);
     frameId = null;
     isFrozen = false;
+    isSlowed = false;
+    timeScale = 1.0;
   }
-  return { start, pause, resume, freeze, unfreeze, stop, get remaining() { return remaining; }, get isFrozen() { return isFrozen; } };
+  return {
+    start,
+    pause,
+    resume,
+    freeze,
+    unfreeze,
+    slow,
+    unslow,
+    stop,
+    get duration() { return duration; },
+    get remaining() { return remaining; },
+    get isFrozen() { return isFrozen; },
+    get isSlowed() { return isSlowed; },
+    get timeScale() { return timeScale; }
+  };
 })();
 
 const RuleEngine = {
   definitions: {
     color: bomb => { const target = pick(bomb.wires); return rule("color", `CUT THE ${target.color.toUpperCase()} WIRE`, target.index); },
-    position: bomb => pick([rule("position", "CUT THE FIRST WIRE FROM THE LEFT", 0), rule("position", "CUT THE SECOND WIRE FROM THE RIGHT", bomb.wires.length - 2), ...(bomb.wires.length % 2 ? [rule("position", "CUT THE MIDDLE WIRE", Math.floor(bomb.wires.length / 2))] : [])]),
-    length: bomb => { const ordered = [...bomb.wires].sort((a, b) => b.length - a.length); return pick([rule("length", "CUT THE LONGEST WIRE", ordered[0].index), rule("length", "CUT THE SHORTEST WIRE", ordered.at(-1).index), ...(ordered.length >= 4 ? [rule("length", "CUT THE SECOND LONGEST WIRE", ordered[1].index), rule("length", "CUT THE SECOND SHORTEST WIRE", ordered.at(-2).index)] : [])]); },
-    relation: bomb => { const index = randomInt(1, bomb.wires.length - 2), left = bomb.wires[index - 1], right = bomb.wires[index + 1]; return rule("relation", `CUT THE WIRE BETWEEN ${left.color.toUpperCase()} AND ${right.color.toUpperCase()}`, index); },
-    combination: bomb => { const ordered = [...bomb.wires].sort((a, b) => b.length - a.length), longest = ordered[0], shortestOther = ordered.filter(wire => wire.index !== longest.index).at(-1); return pick([rule("combination", `CUT THE LONGEST ${longest.color.toUpperCase()} WIRE`, longest.index), rule("combination", `CUT THE SHORTEST WIRE THAT IS NOT ${longest.color.toUpperCase()}`, shortestOther.index), ...(ordered.length >= 4 ? [rule("combination", `CUT THE SECOND LONGEST ${ordered[1].color.toUpperCase()} WIRE`, ordered[1].index)] : [])]); },
-    memory: (bomb, history) => { if (history.lastAnswerIndex === null || history.lastAnswerIndex >= bomb.wires.length) return null; const opposite = bomb.wires.length - 1 - history.lastAnswerIndex; return pick([rule("memory", "CUT THE SAME POSITION AS LAST ROUND", history.lastAnswerIndex), rule("memory", "CUT THE POSITION OPPOSITE LAST ROUND", opposite)]); },
+    onlyColor: bomb => {
+      const counts = {};
+      bomb.wires.forEach(w => counts[w.color] = (counts[w.color] || 0) + 1);
+      const uniqueWires = bomb.wires.filter(w => counts[w.color] === 1);
+      if (!uniqueWires.length) return null;
+      const target = pick(uniqueWires);
+      return rule("onlyColor", `CUT THE ONLY ${target.color.toUpperCase()} WIRE`, target.index);
+    },
+    position: bomb => pick([
+      rule("position", "CUT THE FIRST WIRE FROM THE LEFT", 0),
+      rule("position", "CUT THE SECOND WIRE FROM THE RIGHT", bomb.wires.length - 2),
+      ...(bomb.wires.length % 2 ? [rule("position", "CUT THE MIDDLE WIRE", Math.floor(bomb.wires.length / 2))] : [])
+    ]),
+    length: bomb => {
+      const ordered = [...bomb.wires].sort((a, b) => b.length - a.length);
+      return pick([
+        rule("length", "CUT THE LONGEST WIRE", ordered[0].index),
+        rule("length", "CUT THE SHORTEST WIRE", ordered.at(-1).index),
+        ...(ordered.length >= 4 ? [rule("length", "CUT THE SECOND LONGEST WIRE", ordered[1].index), rule("length", "CUT THE SECOND SHORTEST WIRE", ordered.at(-2).index)] : [])
+      ]);
+    },
+    relation: bomb => {
+      if (bomb.wires.length < 3) return null;
+      const index = randomInt(1, bomb.wires.length - 2), left = bomb.wires[index - 1], right = bomb.wires[index + 1];
+      return rule("relation", `CUT THE WIRE BETWEEN ${left.color.toUpperCase()} AND ${right.color.toUpperCase()}`, index);
+    },
+    combination: bomb => {
+      const ordered = [...bomb.wires].sort((a, b) => b.length - a.length), longest = ordered[0], shortestOther = ordered.filter(wire => wire.index !== longest.index).at(-1);
+      const options = [rule("combination", `CUT THE LONGEST ${longest.color.toUpperCase()} WIRE`, longest.index)];
+      if (shortestOther) options.push(rule("combination", `CUT THE SHORTEST WIRE THAT IS NOT ${longest.color.toUpperCase()}`, shortestOther.index));
+      if (ordered.length >= 4) options.push(rule("combination", `CUT THE SECOND LONGEST ${ordered[1].color.toUpperCase()} WIRE`, ordered[1].index));
+      return pick(options);
+    },
+    memory: (bomb, history) => {
+      if (!history || history.lastAnswerIndex === null || history.lastAnswerIndex >= bomb.wires.length) return null;
+      const opposite = bomb.wires.length - 1 - history.lastAnswerIndex;
+      return pick([
+        rule("memory", "CUT THE SAME POSITION AS LAST ROUND", history.lastAnswerIndex),
+        rule("memory", "CUT THE POSITION OPPOSITE LAST ROUND", opposite)
+      ]);
+    },
+    signal: bomb => {
+      const wiresWithSignals = bomb.wires.filter(w => typeof w.signalNodes === "number");
+      if (!wiresWithSignals.length) return null;
+      const maxSignal = Math.max(...wiresWithSignals.map(w => w.signalNodes));
+      const minSignal = Math.min(...wiresWithSignals.map(w => w.signalNodes));
+      const maxWires = wiresWithSignals.filter(w => w.signalNodes === maxSignal);
+      const minWires = wiresWithSignals.filter(w => w.signalNodes === minSignal);
+      const options = [];
+      if (maxWires.length === 1 && maxSignal > minSignal) {
+        options.push(rule("signal", "CUT THE WIRE WITH HIGHEST SIGNAL NODES", maxWires[0].index));
+      }
+      if (minWires.length === 1 && maxSignal > minSignal) {
+        options.push(rule("signal", "CUT THE WIRE WITH LOWEST SIGNAL NODES", minWires[0].index));
+      }
+      const counts = {};
+      wiresWithSignals.forEach(w => counts[w.signalNodes] = (counts[w.signalNodes] || 0) + 1);
+      wiresWithSignals.forEach(w => {
+        if (counts[w.signalNodes] === 1) {
+          options.push(rule("signal", `CUT THE WIRE WITH ${w.signalNodes} SIGNAL NODE${w.signalNodes > 1 ? "S" : ""}`, w.index));
+        }
+      });
+      return options.length ? pick(options) : null;
+    },
+    led: bomb => {
+      const ledWires = bomb.wires.filter(w => w.hasWarningLed);
+      if (ledWires.length === 1) {
+        return rule("led", "CUT THE WIRE WITH THE WARNING LED", ledWires[0].index);
+      }
+      return null;
+    },
+    adjacency: bomb => {
+      const options = [];
+      bomb.wires.forEach((w, idx) => {
+        if (idx < bomb.wires.length - 1) {
+          const right = bomb.wires[idx + 1];
+          options.push(rule("adjacency", `CUT THE WIRE LEFT OF ${right.color.toUpperCase()}`, idx));
+        }
+        if (idx > 0) {
+          const left = bomb.wires[idx - 1];
+          options.push(rule("adjacency", `CUT THE WIRE RIGHT OF ${left.color.toUpperCase()}`, idx));
+        }
+      });
+      const ordered = [...bomb.wires].sort((a, b) => b.length - a.length);
+      const longestIdx = ordered[0].index;
+      if (longestIdx > 0) {
+        options.push(rule("adjacency", "CUT THE WIRE LEFT OF THE LONGEST WIRE", longestIdx - 1));
+      }
+      if (longestIdx < bomb.wires.length - 1) {
+        options.push(rule("adjacency", "CUT THE WIRE RIGHT OF THE LONGEST WIRE", longestIdx + 1));
+      }
+      return options.length ? pick(options) : null;
+    },
+    order: bomb => {
+      const ordered = [...bomb.wires].sort((a, b) => b.length - a.length);
+      if (ordered.length >= 4) {
+        return pick([
+          rule("order", "CUT THE SECOND SHORTEST WIRE", ordered.at(-2).index),
+          rule("order", "CUT THE SECOND LONGEST WIRE", ordered[1].index)
+        ]);
+      }
+      return null;
+    },
+    count: bomb => {
+      const idx = randomInt(0, bomb.wires.length - 1);
+      return rule("count", `CUT WIRE ${idx + 1}`, idx);
+    },
   },
-  create(bomb, allowed, history) { return shuffle(allowed).map(type => this.definitions[type](bomb, history)).find(Boolean) || this.definitions.color(bomb); },
+  create(bomb, allowed, history) { return shuffle(allowed).map(type => this.definitions[type] ? this.definitions[type](bomb, history) : null).find(Boolean) || this.definitions.color(bomb); },
+};
+
+const BombEventRegistry = {
+  powerSurge: {
+    id: "powerSurge",
+    displayName: "POWER SURGE",
+    scoreMultiplier: 1.75,
+    minDifficulty: "hard",
+    minBomb: 6,
+    className: "event-power-surge",
+    audioStyle: "surge",
+    description: "High-voltage surge detected"
+  },
+  reconfiguration: {
+    id: "reconfiguration",
+    displayName: "SYSTEM RECONFIGURATION",
+    scoreMultiplier: 1.75,
+    minDifficulty: "hard",
+    minBomb: 8,
+    className: "event-reconfig",
+    audioStyle: "reconfig",
+    description: "Dynamic circuit reconfiguration"
+  },
+  emergencyOverride: {
+    id: "emergencyOverride",
+    displayName: "EMERGENCY OVERRIDE",
+    scoreMultiplier: 1.75,
+    minDifficulty: "veryHard",
+    minBomb: 10,
+    className: "event-override",
+    audioStyle: "override",
+    description: "Urgent two-step safety override"
+  }
 };
 
 const BombFactory = {
+  getPhaseCount(number, difficultyKey, wireCount) {
+    if (number === 1) return 1;
+    const roll = Math.random();
+    let requestedPhases = 1;
+
+    if (number <= 3) {
+      requestedPhases = roll < 0.85 ? 1 : 2;
+    } else if (number <= 6) {
+      requestedPhases = roll < 0.65 ? 1 : 2;
+    } else if (number <= 9) {
+      if (roll < 0.50) requestedPhases = 1;
+      else if (roll < 0.85) requestedPhases = 2;
+      else requestedPhases = 3;
+    } else if (number <= 14) {
+      if (roll < 0.35) requestedPhases = 1;
+      else if (roll < 0.75) requestedPhases = 2;
+      else requestedPhases = 3;
+    } else {
+      if (roll < 0.35) requestedPhases = 1;
+      else if (roll < 0.65) requestedPhases = 2;
+      else requestedPhases = 3;
+    }
+
+    if (difficultyKey === "easy" || difficultyKey === "normal") {
+      requestedPhases = Math.min(2, requestedPhases);
+    }
+
+    const maxSolvablePhases = Math.max(1, wireCount - 1);
+    return Math.min(requestedPhases, maxSolvablePhases);
+  },
+
+  getEventForBomb(number, difficultyKey) {
+    if (number < 4) return null;
+    const diffRanks = { easy: 0, normal: 1, hard: 2, veryHard: 3, extreme: 4 };
+    const currRank = diffRanks[difficultyKey] || 0;
+
+    let eventChance = 0;
+    if (number >= 4 && number <= 6) eventChance = 0.05;
+    else if (number >= 7 && number <= 9) eventChance = 0.15;
+    else if (number >= 10 && number <= 14) eventChance = 0.05;
+    else if (number >= 15) eventChance = 0.10;
+
+    if (Math.random() > eventChance) return null;
+
+    const eligibleEvents = Object.values(BombEventRegistry).filter(evt => {
+      return number >= evt.minBomb || currRank >= (diffRanks[evt.minDifficulty] || 0);
+    });
+    if (!eligibleEvents.length) return null;
+    return pick(eligibleEvents);
+  },
+
   create(number, history) {
     if (number === 1) {
-      // Guaranteed accessible, clear first bomb for smooth onboarding
       const colors = shuffle(["blue", "red", "green", "yellow"]).slice(0, 3);
-      const wires = colors.map((color, index) => ({ color, index, length: 0.72 + index * 0.08 }));
+      const wires = colors.map((color, index) => ({ color, index, length: 0.72 + index * 0.08, cut: false, signalNodes: index + 1, hasWarningLed: false }));
       const target = pick(wires);
-      const bomb = { number: 1, wires, time: 10 + UpgradeManager.timeBonus() };
-      bomb.challenge = rule("color", `CUT THE ${target.color.toUpperCase()} WIRE`, target.index);
+      const bomb = { number: 1, wires, time: getEndlessBaseTime(1) + UpgradeManager.timeBonus() };
+      const phase0 = rule("color", `CUT THE ${target.color.toUpperCase()} WIRE`, target.index);
+      bomb.phases = [{ phaseIndex: 0, totalPhases: 1, ...phase0 }];
+      bomb.currentPhaseIndex = 0;
+      bomb.totalPhases = 1;
+      bomb.challenge = bomb.phases[0];
+      bomb.event = null;
       return bomb;
     }
-    const stage = getStage(number), count = randomInt(stage.wires[0], stage.wires[1]), wires = shuffle(GameConfig.wireColors).slice(0, count).map((color, index) => ({ color, index, length: 0 }));
+
+    const diffKey = getEndlessDifficulty(number);
+    const diffCfg = EndlessDifficultyConfig[diffKey];
+    const wireRange = diffCfg.wires;
+    const count = randomInt(wireRange[0], wireRange[1]);
+    const wires = shuffle(GameConfig.wireColors).slice(0, count).map((color, index) => ({ color, index, length: 0, cut: false }));
     const closeness = Math.min(.28, Math.max(0, (number - 6) * .014)), base = .6 + closeness;
     shuffle(wires).forEach((wire, rank) => { wire.length = base + (count - rank) * ((.36 - closeness) / count); });
-    const bomb = { number, wires, time: stage.time + UpgradeManager.timeBonus() }; bomb.challenge = RuleEngine.create(bomb, stage.rules, history); return bomb;
+    
+    // Distribute signal nodes (1 to 3) across wires
+    const signalChoices = [1, 2, 3];
+    wires.forEach((wire, idx) => {
+      wire.signalNodes = signalChoices[idx % signalChoices.length];
+      wire.hasWarningLed = false;
+    });
+    // Assign warning LED deterministically on hard+ or randomly
+    if (diffKey === "hard" || diffKey === "veryHard" || diffKey === "extreme" || Math.random() < 0.4) {
+      const ledTarget = pick(wires);
+      if (ledTarget) ledTarget.hasWarningLed = true;
+    }
+
+    const bomb = { number, wires, time: getEndlessBaseTime(number) + UpgradeManager.timeBonus() };
+    const eventDef = this.getEventForBomb(number, diffKey);
+    let totalPhases = this.getPhaseCount(number, diffKey, count);
+    if (eventDef && (eventDef.id === "emergencyOverride" || eventDef.id === "reconfiguration")) {
+      totalPhases = Math.max(2, Math.min(2, count - 1));
+    }
+
+    const phases = [];
+    const usedWireIndices = new Set();
+
+    // Phase 1 (index 0)
+    const phase0Rule = RuleEngine.create(bomb, diffCfg.rules, history);
+    usedWireIndices.add(phase0Rule.answerIndex);
+    phases.push({
+      phaseIndex: 0,
+      totalPhases,
+      type: phase0Rule.type,
+      text: phase0Rule.text,
+      answerIndex: phase0Rule.answerIndex
+    });
+
+    // Phase 2 (index 1) if applicable
+    if (totalPhases >= 2) {
+      const remainingWires = wires.filter(w => !usedWireIndices.has(w.index));
+      if (remainingWires.length > 0) {
+        const targetWire = pick(remainingWires);
+        usedWireIndices.add(targetWire.index);
+        
+        let phaseText = `CUT THE ${targetWire.color.toUpperCase()} WIRE`;
+        let phaseType = "color";
+        if (targetWire.index === 0 && Math.random() < 0.4) {
+          phaseText = "CUT THE FIRST WIRE FROM THE LEFT";
+          phaseType = "position";
+        } else if (targetWire.index === wires.length - 1 && Math.random() < 0.4) {
+          phaseText = "CUT THE LAST WIRE ON THE RIGHT";
+          phaseType = "position";
+        } else if (Math.random() < 0.3) {
+          phaseText = `CUT WIRE ${targetWire.index + 1}`;
+          phaseType = "position";
+        }
+
+        phases.push({
+          phaseIndex: 1,
+          totalPhases,
+          type: phaseType,
+          text: phaseText,
+          answerIndex: targetWire.index
+        });
+      }
+    }
+
+    // Phase 3 (index 2) if applicable
+    if (totalPhases >= 3) {
+      const remainingWires = wires.filter(w => !usedWireIndices.has(w.index));
+      if (remainingWires.length > 0) {
+        const targetWire = pick(remainingWires);
+        usedWireIndices.add(targetWire.index);
+        phases.push({
+          phaseIndex: 2,
+          totalPhases,
+          type: "color",
+          text: `CUT WIRE ${targetWire.index + 1} (${targetWire.color.toUpperCase()})`,
+          answerIndex: targetWire.index
+        });
+      }
+    }
+
+    const actualTotal = phases.length;
+    phases.forEach(p => { p.totalPhases = actualTotal; });
+
+    bomb.phases = phases;
+    bomb.currentPhaseIndex = 0;
+    bomb.totalPhases = actualTotal;
+    bomb.challenge = phases[0];
+    bomb.event = eventDef || null;
+
+    return bomb;
   },
 };
-const Scoring = { award: (type, secondsLeft, streak) => GameConfig.score[type] + Math.round(secondsLeft * GameConfig.speedBonusPerSecond * UpgradeManager.speedMultiplier()) + Math.min(GameConfig.comboBonusCap, Math.max(0, streak - 1) * 8) };
+
+const Scoring = {
+  award: (type, secondsLeft, streak, difficultyKey = "easy", phaseMultiplier = 1.0) => {
+    const base = GameConfig.score[type] || 100;
+    const speedBonus = Math.round(secondsLeft * GameConfig.speedBonusPerSecond * UpgradeManager.speedMultiplier());
+    const diffBonus = EndlessDifficultyConfig[difficultyKey]?.bonus || 0;
+    const streakMult = getStreakMultiplier(streak);
+    const mult = Number(phaseMultiplier) || 1.0;
+    return Math.round((base + speedBonus + diffBonus) * streakMult * mult);
+  }
+};
 
 const ShopUI = (() => {
+  const SHOW_UPGRADES_IN_SHOP = false;
   let purchasing = false;
   function render() {
     el.shopCoins.textContent = profile.coins.toLocaleString();
     el.upgradeList.replaceChildren();
     el.powerList.replaceChildren();
 
-    // Upgrades
-    Object.entries(UpgradeDefinitions).forEach(([id, item]) => {
-      const level = UpgradeManager.level(id), max = UpgradeManager.maxLevel(id), price = UpgradeManager.nextPrice(id), card = document.createElement("article");
-      card.className = "upgrade-card"; card.dataset.upgrade = id;
-      card.innerHTML = `<div class="upgrade-icon">${item.icon}</div><div class="upgrade-copy"><h2>${item.name}</h2><p>${item.description}</p><span>LEVEL ${level}/${max} · ${item.effect(level)}</span></div><div class="upgrade-action"><strong>${price === null ? "MAX" : `◆ ${price}`}</strong><button class="upgrade-btn ${price === null ? "is-max" : ""}">${price === null ? "MAX LEVEL" : "UPGRADE"}</button></div>`;
-      card.querySelector("button").addEventListener("click", () => buyUpgrade(id, card));
-      el.upgradeList.appendChild(card);
-    });
+    const catUpgrades = byId("shop-cat-upgrades");
+    if (catUpgrades) {
+      catUpgrades.style.display = SHOW_UPGRADES_IN_SHOP ? "block" : "none";
+    }
+    if (el.upgradeList) {
+      el.upgradeList.style.display = SHOW_UPGRADES_IN_SHOP ? "grid" : "none";
+    }
+
+    if (SHOW_UPGRADES_IN_SHOP) {
+      // Upgrades
+      Object.entries(UpgradeDefinitions).forEach(([id, item]) => {
+        const level = UpgradeManager.level(id), max = UpgradeManager.maxLevel(id), price = UpgradeManager.nextPrice(id), card = document.createElement("article");
+        card.className = "upgrade-card"; card.dataset.upgrade = id;
+        card.innerHTML = `<div class="upgrade-icon">${item.icon}</div><div class="upgrade-copy"><h2>${item.name}</h2><p>${item.description}</p><span>LEVEL ${level}/${max} · ${item.effect(level)}</span></div><div class="upgrade-action"><strong>${price === null ? "MAX" : `◆ ${price}`}</strong><button class="upgrade-btn ${price === null ? "is-max" : ""}">${price === null ? "MAX LEVEL" : "UPGRADE"}</button></div>`;
+        card.querySelector("button").addEventListener("click", () => buyUpgrade(id, card));
+        el.upgradeList.appendChild(card);
+      });
+    }
 
     // Powers
     Object.entries(PowerDefinitions).forEach(([id, item]) => {
@@ -2128,6 +2868,9 @@ function newRun() {
     bestStreak: 0,
     bombsDefused: 0,
     bombNumber: 1,
+    difficulty: "easy",
+    timeBank: 0,
+    baseTime: ENDLESS_BASE_TIME,
     bomb: null,
     inputLocked: false,
     lastAnswerIndex: null,
@@ -2144,15 +2887,30 @@ function closeAccountPopup() {
 }
 function showScreen(name) {
   closeAccountPopup();
-  Object.values(screens).forEach(screen => screen?.classList.remove("active"));
-  screens[name]?.classList.add("active");
+  Object.values(screens).forEach(screen => {
+    if (!screen) return;
+    screen.classList.remove("active");
+    if (screen.hasAttribute("aria-hidden")) {
+      screen.setAttribute("aria-hidden", "true");
+    }
+  });
+  const target = screens[name];
+  if (target) {
+    target.classList.add("active");
+    if (target.hasAttribute("aria-hidden")) {
+      target.setAttribute("aria-hidden", "false");
+    }
+  }
 }
 function later(callback, milliseconds) { const id = setTimeout(() => { pendingTimeouts.delete(id); callback(); }, milliseconds); pendingTimeouts.add(id); return id; }
 function clearPendingTransitions() { pendingTimeouts.forEach(id => clearTimeout(id)); pendingTimeouts.clear(); }
 function setBombStatus(status) {
   if (el.bomb) {
     el.bomb.dataset.status = status.toLowerCase();
-    el.bomb.classList.remove("status-arming", "status-armed", "status-success", "status-failure", "status-frozen", "status-saved", "status-shielded");
+    el.bomb.classList.remove(
+      "status-arming", "status-armed", "status-warning", "status-danger", "status-critical",
+      "status-success", "status-failure", "status-frozen", "status-slow", "status-timeslow", "status-saved", "status-shielded"
+    );
     const cls = `status-${status.toLowerCase().replace(/[^a-z]/g, "")}`;
     el.bomb.classList.add(cls);
   }
@@ -4088,6 +4846,1940 @@ const DataExportManager = {
 };
 
 /* =========================================================
+   CAMPAIGN CONFIGURATION & MANAGER (CHAPTER 1 / LEVELS 1-2)
+========================================================= */
+const CampaignConfig = {
+  chapter: 1,
+  chapterTitle: "FIRST PROTOCOL",
+  levels: {
+    1: {
+      chapter: 1,
+      level: 1,
+      title: "FIRST CUT",
+      subtitle: "LEVEL 01",
+      briefing: "Your first defusal. Identify and cut the target wire before the countdown reaches zero.",
+      timer: 10.0,
+      wireCount: 3,
+      wires: [
+        { color: "red", index: 0, length: 0.85, hasWarningLed: false, signalNodes: 0 },
+        { color: "blue", index: 1, length: 0.95, hasWarningLed: false, signalNodes: 0 },
+        { color: "green", index: 2, length: 0.88, hasWarningLed: false, signalNodes: 0 }
+      ],
+      rule: {
+        type: "color",
+        text: "CUT THE BLUE WIRE",
+        answerIndex: 1
+      },
+      phases: [
+        { phaseIndex: 0, totalPhases: 1, type: "color", text: "CUT THE BLUE WIRE", answerIndex: 1 }
+      ],
+      rulesInfo: [
+        { icon: "⚡", label: "3-WIRE ARRAY", desc: "Standard terminal bus with three active conductors." },
+        { icon: "🎯", label: "OBJECTIVE: BLUE WIRE", desc: "Sever the Blue wire to disarm the circuit core safely." },
+        { icon: "⏱", label: "10.0 SECONDS", desc: "Finish with 3.0+ seconds left for maximum star rating." }
+      ],
+      starConditions: [
+        { star: 1, desc: "Defuse the bomb", test: ctx => ctx.completed },
+        { star: 2, desc: "Finish with >= 3.0s remaining", test: ctx => ctx.completed && ctx.secondsLeft >= 3.0 },
+        { star: 3, desc: "Complete without using powers", test: ctx => ctx.completed && !ctx.powerUsed }
+      ],
+      baseReward: {
+        coins: 50,
+        score: 100
+      }
+    },
+    2: {
+      chapter: 1,
+      level: 2,
+      title: "DUAL PATH",
+      subtitle: "LEVEL 02",
+      briefing: "Two systems are active. Cut both target wires in the correct sequence before the countdown reaches zero.",
+      timer: 10.0,
+      wireCount: 4,
+      wires: [
+        { color: "red", index: 0, length: 0.85, hasWarningLed: false, signalNodes: 0 },
+        { color: "blue", index: 1, length: 0.95, hasWarningLed: false, signalNodes: 0 },
+        { color: "green", index: 2, length: 0.88, hasWarningLed: false, signalNodes: 0 },
+        { color: "yellow", index: 3, length: 0.92, hasWarningLed: false, signalNodes: 0 }
+      ],
+      rule: {
+        type: "color",
+        text: "CUT THE BLUE WIRE",
+        answerIndex: 1
+      },
+      phases: [
+        { phaseIndex: 0, totalPhases: 2, type: "color", text: "CUT THE BLUE WIRE", answerIndex: 1 },
+        { phaseIndex: 1, totalPhases: 2, type: "color", text: "CUT THE YELLOW WIRE", answerIndex: 3 }
+      ],
+      rulesInfo: [
+        { icon: "⚡", label: "4-WIRE ARRAY", desc: "Four active conductors (Red, Blue, Green, Yellow)." },
+        { icon: "🎯", label: "TARGET SEQUENCE: BLUE → YELLOW", desc: "Cut Blue in Phase 1, then Yellow in Phase 2." },
+        { icon: "⏱", label: "10.0 SECONDS", desc: "Finish with 4.0+ seconds left for maximum star rating." }
+      ],
+      starConditions: [
+        { star: 1, desc: "Defuse the bomb", test: ctx => ctx.completed },
+        { star: 2, desc: "Finish with >= 4.0s remaining", test: ctx => ctx.completed && ctx.secondsLeft >= 4.0 },
+        { star: 3, desc: "Finish with >= 4.0s remaining and no powers used", test: ctx => ctx.completed && ctx.secondsLeft >= 4.0 && !ctx.powerUsed }
+      ],
+      baseReward: {
+        coins: 50,
+        score: 100
+      }
+    },
+    3: {
+      chapter: 1,
+      level: 3,
+      title: "TRI-SPLIT",
+      subtitle: "LEVEL 03",
+      briefing: "Three systems are linked to the same circuit. Cut the target wires in the correct sequence before the countdown reaches zero.",
+      timer: 10.0,
+      wireCount: 5,
+      wires: [
+        { color: "red", index: 0, length: 0.85, hasWarningLed: false, signalNodes: 0 },
+        { color: "blue", index: 1, length: 0.95, hasWarningLed: false, signalNodes: 0 },
+        { color: "green", index: 2, length: 0.88, hasWarningLed: false, signalNodes: 0 },
+        { color: "yellow", index: 3, length: 0.92, hasWarningLed: false, signalNodes: 0 },
+        { color: "white", index: 4, length: 0.86, hasWarningLed: false, signalNodes: 0 }
+      ],
+      rule: {
+        type: "color",
+        text: "CUT THE GREEN WIRE",
+        answerIndex: 2
+      },
+      phases: [
+        { phaseIndex: 0, totalPhases: 3, type: "color", text: "CUT THE GREEN WIRE", answerIndex: 2 },
+        { phaseIndex: 1, totalPhases: 3, type: "color", text: "CUT THE BLUE WIRE", answerIndex: 1 },
+        { phaseIndex: 2, totalPhases: 3, type: "color", text: "CUT THE YELLOW WIRE", answerIndex: 3 }
+      ],
+      rulesInfo: [
+        { icon: "⚡", label: "5-WIRE ARRAY", desc: "Five active conductors (Red, Blue, Green, Yellow, White)." },
+        { icon: "🎯", label: "SEQUENCE: GREEN → BLUE → YELLOW", desc: "Cut Green in Phase 1, Blue in Phase 2, Yellow in Phase 3." },
+        { icon: "⏱", label: "10.0 SECONDS", desc: "Finish with 4.5+ seconds left for maximum star rating." }
+      ],
+      starConditions: [
+        { star: 1, desc: "Defuse the bomb", test: ctx => ctx.completed },
+        { star: 2, desc: "Finish with >= 4.5s remaining", test: ctx => ctx.completed && ctx.secondsLeft >= 4.5 },
+        { star: 3, desc: "Finish with >= 4.5s remaining and no powers used", test: ctx => ctx.completed && ctx.secondsLeft >= 4.5 && !ctx.powerUsed }
+      ],
+      baseReward: {
+        coins: 50,
+        score: 100
+      }
+    },
+    4: {
+      chapter: 1,
+      level: 4,
+      gameplayType: "FREE_FLOW",
+      title: "CIRCUIT FLOW",
+      subtitle: "LEVEL 04",
+      briefing: "The primary circuits have been severed. Restore the system by routing each signal to its matching terminal.",
+      timer: 15.0,
+      circuitConfig: {
+        grid: { rows: 5, cols: 5 },
+        terminals: {
+          red: [[0, 0], [4, 1]],
+          blue: [[0, 4], [4, 4]],
+          green: [[1, 2], [3, 2]]
+        },
+        obstacles: [[1, 1], [2, 3], [3, 1]]
+      },
+      rulesInfo: [
+        { icon: "⚡", label: "5×5 CIRCUIT GRID", desc: "Five-by-five terminal routing matrix." },
+        { icon: "🔗", label: "CONNECT 3 MATCHING PAIRS", desc: "Route Red, Blue, and Green signals without crossing." },
+        { icon: "⏱", label: "15.0 SECONDS", desc: "Finish with 6.0+ seconds left for maximum star rating." }
+      ],
+      starConditions: [
+        { star: 1, desc: "Restore all circuits", test: ctx => ctx.completed },
+        { star: 2, desc: "Finish with >= 6.0s remaining", test: ctx => ctx.completed && ctx.secondsLeft >= 6.0 },
+        { star: 3, desc: "Finish with >= 6.0s remaining and no powers used", test: ctx => ctx.completed && ctx.secondsLeft >= 6.0 && !ctx.powerUsed }
+      ],
+      baseReward: {
+        coins: 50,
+        score: 100
+      }
+    },
+    5: {
+      chapter: 1,
+      level: 5,
+      gameplayType: "SIGNAL_MEMORY",
+      title: "SIGNAL TRACE",
+      subtitle: "LEVEL 05",
+      briefing: "The circuit is unstable. A signal pattern has been recorded. Memorize the sequence, then reproduce it before the system collapses.",
+      timer: 12.0,
+      memoryConfig: {
+        grid: { rows: 3, cols: 3 },
+        sequenceLength: 4,
+        sequence: [
+          [0, 0],
+          [1, 1],
+          [0, 2],
+          [2, 1]
+        ],
+        revealActiveMs: 450,
+        revealGapMs: 180
+      },
+      rulesInfo: [
+        { icon: "⚡", label: "3×3 SIGNAL GRID", desc: "Three-by-three neural signal matrix." },
+        { icon: "🧠", label: "MEMORIZE 4 NODES", desc: "Observe the active pattern, then repeat in exact order." },
+        { icon: "⏱", label: "12.0 SECONDS", desc: "Finish with 5.0+ seconds left for maximum star rating." }
+      ],
+      starConditions: [
+        { star: 1, desc: "Complete the signal sequence", test: ctx => ctx.completed },
+        { star: 2, desc: "Finish with >= 5.0s remaining", test: ctx => ctx.completed && ctx.secondsLeft >= 5.0 },
+        { star: 3, desc: "Finish with >= 5.0s remaining and no powers used", test: ctx => ctx.completed && ctx.secondsLeft >= 5.0 && !ctx.powerUsed }
+      ],
+      baseReward: {
+        coins: 50,
+        score: 100
+      }
+    },
+    6: {
+      chapter: 1,
+      level: 6,
+      gameplayType: "COMBINATION",
+      title: "COMBINATION PROTOCOL",
+      subtitle: "REMEMBER. IDENTIFY. DEFUSE.",
+      briefing: "The signal contains the key to the final circuit. Memorize the pattern, reproduce it, then use the result to complete the defusal.",
+      timer: 14.0,
+      wireCount: 4,
+      wires: [
+        { color: "red", index: 0, length: 0.85, hasWarningLed: false, signalNodes: 0 },
+        { color: "blue", index: 1, length: 0.95, hasWarningLed: false, signalNodes: 0 },
+        { color: "green", index: 2, length: 0.88, hasWarningLed: false, signalNodes: 0 },
+        { color: "yellow", index: 3, length: 0.92, hasWarningLed: false, signalNodes: 0 }
+      ],
+      memoryConfig: {
+        grid: { rows: 3, cols: 3 },
+        sequenceLength: 3,
+        sequence: [
+          [0, 0],
+          [1, 2],
+          [2, 1]
+        ],
+        revealActiveMs: 450,
+        revealGapMs: 180
+      },
+      targetMapping: {
+        node: [2, 1],
+        wireIndex: 3,
+        wireColor: "yellow"
+      },
+      rulesInfo: [
+        { icon: "🧠", label: "MEMORIZE 3 SIGNALS", desc: "Observe the 3-node sequence, then reproduce it." },
+        { icon: "⚡", label: "4-WIRE DEFUSAL", desc: "The final signal indicates the target wire." },
+        { icon: "⏱", label: "14.0 SECONDS", desc: "Finish with 5.5+ seconds left for maximum star rating." }
+      ],
+      starConditions: [
+        { star: 1, desc: "Defuse the bomb", test: ctx => ctx.completed },
+        { star: 2, desc: "Finish with >= 5.5s remaining", test: ctx => ctx.completed && ctx.secondsLeft >= 5.5 },
+        { star: 3, desc: "Finish with >= 5.5s remaining and no powers used", test: ctx => ctx.completed && ctx.secondsLeft >= 5.5 && !ctx.powerUsed }
+      ],
+      baseReward: {
+        coins: 50,
+        score: 100
+      }
+    },
+    7: {
+      chapter: 1,
+      level: 7,
+      gameplayType: "WORD_PUZZLE",
+      title: "CODE WORD",
+      subtitle: "LEVEL 07",
+      briefing: "The circuit lock is encrypted. Reconstruct the code word, then use the decoded signal to identify the final wire.",
+      timer: 15.0,
+      wordConfig: {
+        word: "RELAY",
+        scrambledLetters: ["A", "L", "Y", "R", "E"],
+        targetMapping: {
+          wireColor: "blue",
+          wireIndex: 1
+        }
+      },
+      wireCount: 4,
+      wires: [
+        { color: "red", index: 0, length: 0.85, hasWarningLed: false, signalNodes: 0 },
+        { color: "blue", index: 1, length: 0.95, hasWarningLed: false, signalNodes: 0 },
+        { color: "green", index: 2, length: 0.88, hasWarningLed: false, signalNodes: 0 },
+        { color: "yellow", index: 3, length: 0.92, hasWarningLed: false, signalNodes: 0 }
+      ],
+      rulesInfo: [
+        { icon: "🔤", label: "5-LETTER CODE", desc: "Reconstruct the encrypted code word." },
+        { icon: "⚡", label: "4-WIRE ARRAY", desc: "The decoded signal reveals the target wire." },
+        { icon: "⏱", label: "15.0 SECONDS", desc: "Finish with 6.0+ seconds left for maximum star rating." }
+      ],
+      starConditions: [
+        { star: 1, desc: "Defuse the bomb", test: ctx => ctx.completed },
+        { star: 2, desc: "Finish with >= 6.0s remaining", test: ctx => ctx.completed && ctx.secondsLeft >= 6.0 },
+        { star: 3, desc: "Finish with >= 6.0s remaining and no powers used", test: ctx => ctx.completed && ctx.secondsLeft >= 6.0 && !ctx.powerUsed }
+      ],
+      baseReward: {
+        coins: 50,
+        score: 100
+      }
+    }
+  }
+};
+
+let campaignCurrentLevel = 1;
+
+/* =========================================================
+   FREE FLOW CIRCUIT MANAGER (CAMPAIGN LEVEL 4+)
+========================================================= */
+const CircuitFlowManager = (() => {
+  let activeConfig = null;
+  let activeColor = null;
+  let activePath = [];
+  let completedPaths = {};
+  let cachedRect = null;
+  let cellWidth = 0;
+  let cellHeight = 0;
+  let isPointerDown = false;
+  let currentPointerId = null;
+
+  function init(config, onComplete) {
+    activeConfig = config;
+    activeColor = null;
+    activePath = [];
+    completedPaths = {};
+    isPointerDown = false;
+    currentPointerId = null;
+
+    if (!el.circuitFlowGrid || !el.circuitFlowBoard || !el.circuitFlowSvg) return;
+
+    el.circuitFlowContainer.style.display = "flex";
+    if (el.wiresContainer) el.wiresContainer.style.display = "none";
+    if (el.instruction) el.instruction.textContent = "RESTORE ALL CIRCUITS";
+    updateProgress();
+
+    renderGrid();
+    bindEvents(onComplete);
+  }
+
+  function cleanup() {
+    activeConfig = null;
+    activeColor = null;
+    activePath = [];
+    completedPaths = {};
+    isPointerDown = false;
+    currentPointerId = null;
+    if (el.circuitFlowContainer) el.circuitFlowContainer.style.display = "none";
+    if (el.wiresContainer) el.wiresContainer.style.display = "flex";
+  }
+
+  function updateProgress() {
+    const total = Object.keys(activeConfig?.terminals || {}).length || 3;
+    const done = Object.keys(completedPaths).length;
+    if (el.circuitProgressChip) {
+      el.circuitProgressChip.textContent = `${done} / ${total} CIRCUITS RESTORED`;
+    }
+  }
+
+  function renderGrid() {
+    if (!activeConfig || !el.circuitFlowGrid) return;
+    el.circuitFlowGrid.replaceChildren();
+
+    const { rows, cols } = activeConfig.grid;
+    const termMap = {};
+    Object.entries(activeConfig.terminals).forEach(([color, pairs]) => {
+      pairs.forEach(([r, c], idx) => {
+        termMap[`${r},${c}`] = { color, idx };
+      });
+    });
+
+    const obstacleSet = new Set(activeConfig.obstacles.map(([r, c]) => `${r},${c}`));
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const cell = document.createElement("div");
+        cell.className = "circuit-cell";
+        cell.dataset.r = String(r);
+        cell.dataset.c = String(c);
+        const key = `${r},${c}`;
+
+        if (obstacleSet.has(key)) {
+          cell.classList.add("cell-obstacle");
+          cell.setAttribute("aria-label", `Blocked cell row ${r + 1}, col ${c + 1}`);
+        } else if (termMap[key]) {
+          const { color, idx } = termMap[key];
+          cell.classList.add("cell-terminal", `terminal-${color}`);
+          cell.dataset.terminalColor = color;
+          cell.setAttribute("aria-label", `${color.toUpperCase()} Terminal ${idx + 1}, row ${r + 1}, col ${c + 1}`);
+          const node = document.createElement("span");
+          node.className = "terminal-node";
+          node.textContent = color[0].toUpperCase();
+          cell.appendChild(node);
+        } else {
+          cell.setAttribute("aria-label", `Circuit cell row ${r + 1}, col ${c + 1}`);
+        }
+
+        el.circuitFlowGrid.appendChild(cell);
+      }
+    }
+
+    renderSvgTraces();
+  }
+
+  function renderSvgTraces() {
+    if (!el.circuitFlowSvg || !el.circuitFlowBoard) return;
+    el.circuitFlowSvg.replaceChildren();
+
+    const rect = el.circuitFlowBoard.getBoundingClientRect();
+    const w = rect.width || 250;
+    const h = rect.height || 250;
+    const padding = 6;
+    const gridW = w - padding * 2;
+    const gridH = h - padding * 2;
+    const cols = activeConfig?.grid.cols || 5;
+    const rows = activeConfig?.grid.rows || 5;
+    const cellW = gridW / cols;
+    const cellH = gridH / rows;
+
+    function getCenter(r, c) {
+      return {
+        x: padding + (c + 0.5) * cellW,
+        y: padding + (r + 0.5) * cellH
+      };
+    }
+
+    // Render completed paths
+    Object.entries(completedPaths).forEach(([color, path]) => {
+      if (path.length < 2) return;
+      const poly = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+      const pts = path.map(({ r, c }) => {
+        const pt = getCenter(r, c);
+        return `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`;
+      }).join(" ");
+      poly.setAttribute("points", pts);
+      poly.setAttribute("fill", "none");
+      poly.setAttribute("stroke", `var(--wire-${color})`);
+      poly.setAttribute("stroke-width", "8");
+      poly.setAttribute("stroke-linecap", "round");
+      poly.setAttribute("stroke-linejoin", "round");
+      poly.setAttribute("opacity", "0.95");
+      poly.style.filter = `drop-shadow(0 0 6px var(--wire-${color}))`;
+      el.circuitFlowSvg.appendChild(poly);
+    });
+
+    // Render active dragging path
+    if (activeColor && activePath.length > 1) {
+      const poly = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+      const pts = activePath.map(({ r, c }) => {
+        const pt = getCenter(r, c);
+        return `${pt.x.toFixed(1)},${pt.y.toFixed(1)}`;
+      }).join(" ");
+      poly.setAttribute("points", pts);
+      poly.setAttribute("fill", "none");
+      poly.setAttribute("stroke", `var(--wire-${activeColor})`);
+      poly.setAttribute("stroke-width", "8");
+      poly.setAttribute("stroke-linecap", "round");
+      poly.setAttribute("stroke-linejoin", "round");
+      poly.setAttribute("opacity", "0.85");
+      poly.style.filter = `drop-shadow(0 0 8px var(--wire-${activeColor}))`;
+      el.circuitFlowSvg.appendChild(poly);
+    }
+  }
+
+  function updateCellClasses() {
+    if (!el.circuitFlowGrid) return;
+    const cells = el.circuitFlowGrid.querySelectorAll(".circuit-cell");
+    cells.forEach(cell => {
+      const r = parseInt(cell.dataset.r, 10);
+      const c = parseInt(cell.dataset.c, 10);
+
+      // Remove previous active classes
+      cell.classList.remove("path-active-red", "path-active-blue", "path-active-green");
+
+      // Check if in completed path
+      let inCompleted = false;
+      Object.entries(completedPaths).forEach(([color, path]) => {
+        if (path.some(p => p.r === r && p.c === c)) {
+          inCompleted = true;
+          cell.classList.add(`path-connected-${color}`);
+        }
+      });
+
+      // Check if in active path
+      if (!inCompleted && activeColor && activePath.some(p => p.r === r && p.c === c)) {
+        cell.classList.add(`path-active-${activeColor}`);
+      }
+    });
+  }
+
+  function getCellFromCoords(clientX, clientY) {
+    if (!cachedRect || cellWidth <= 0 || cellHeight <= 0) return null;
+    const x = clientX - cachedRect.left - 6; // 6px padding
+    const y = clientY - cachedRect.top - 6;
+    if (x < 0 || y < 0) return null;
+    const c = Math.floor(x / cellWidth);
+    const r = Math.floor(y / cellHeight);
+    if (r >= 0 && r < activeConfig.grid.rows && c >= 0 && c < activeConfig.grid.cols) {
+      return { r, c };
+    }
+    return null;
+  }
+
+  function bindEvents(onComplete) {
+    const board = el.circuitFlowBoard;
+    if (!board) return;
+
+    function handlePointerDown(e) {
+      if (state !== "PLAYING" || run.inputLocked) return;
+      e.preventDefault();
+
+      cachedRect = board.getBoundingClientRect();
+      const padding = 6;
+      cellWidth = (cachedRect.width - padding * 2) / activeConfig.grid.cols;
+      cellHeight = (cachedRect.height - padding * 2) / activeConfig.grid.rows;
+
+      const cellCoord = getCellFromCoords(e.clientX, e.clientY);
+      if (!cellCoord) return;
+
+      const { r, c } = cellCoord;
+
+      // Check if cell is a terminal
+      let matchedColor = null;
+      Object.entries(activeConfig.terminals).forEach(([color, pairs]) => {
+        if (pairs.some(([tr, tc]) => tr === r && tc === c)) {
+          matchedColor = color;
+        }
+      });
+
+      if (matchedColor && !completedPaths[matchedColor]) {
+        isPointerDown = true;
+        currentPointerId = e.pointerId;
+        activeColor = matchedColor;
+        activePath = [{ r, c }];
+        AudioManager.playWireCut();
+        updateCellClasses();
+        renderSvgTraces();
+        try { board.setPointerCapture(e.pointerId); } catch (_) {}
+      }
+    }
+
+    function handlePointerMove(e) {
+      if (!isPointerDown || !activeColor || state !== "PLAYING") return;
+      e.preventDefault();
+
+      const cellCoord = getCellFromCoords(e.clientX, e.clientY);
+      if (!cellCoord) return;
+
+      const { r, c } = cellCoord;
+      const last = activePath[activePath.length - 1];
+      if (last.r === r && last.c === c) return; // same cell
+
+      // Backtracking: if dragging to 2nd to last cell, pop last
+      if (activePath.length > 1) {
+        const prev = activePath[activePath.length - 2];
+        if (prev.r === r && prev.c === c) {
+          activePath.pop();
+          updateCellClasses();
+          renderSvgTraces();
+          return;
+        }
+      }
+
+      // Orthogonal adjacency check: abs(dr) + abs(dc) === 1
+      const dist = Math.abs(last.r - r) + Math.abs(last.c - c);
+      if (dist !== 1) return;
+
+      // Obstacle check
+      const isObstacle = activeConfig.obstacles.some(([or, oc]) => or === r && oc === c);
+      if (isObstacle) return;
+
+      // Completed path collision check
+      let inOtherCompleted = false;
+      Object.entries(completedPaths).forEach(([color, path]) => {
+        if (path.some(p => p.r === r && p.c === c)) {
+          inOtherCompleted = true;
+        }
+      });
+      if (inOtherCompleted) return;
+
+      // Self-intersection check
+      if (activePath.some(p => p.r === r && p.c === c)) return;
+
+      // Other terminal collision check
+      let isOtherTerminal = false;
+      Object.entries(activeConfig.terminals).forEach(([color, pairs]) => {
+        if (color !== activeColor && pairs.some(([tr, tc]) => tr === r && tc === c)) {
+          isOtherTerminal = true;
+        }
+      });
+      if (isOtherTerminal) return;
+
+      // Add valid cell to activePath
+      activePath.push({ r, c });
+      updateCellClasses();
+      renderSvgTraces();
+    }
+
+    function handlePointerUp(e) {
+      if (!isPointerDown || !activeColor) return;
+      isPointerDown = false;
+      try { board.releasePointerCapture(currentPointerId); } catch (_) {}
+      currentPointerId = null;
+
+      const last = activePath[activePath.length - 1];
+      const terminals = activeConfig.terminals[activeColor];
+      const startTerm = activePath[0];
+
+      // Check if last cell is the matching terminal (and not the starting terminal)
+      const isTarget = terminals.some(([tr, tc]) => tr === last.r && tc === last.c && (tr !== startTerm.r || tc !== startTerm.c));
+
+      if (isTarget && activePath.length > 1) {
+        // Connection complete!
+        completedPaths[activeColor] = [...activePath];
+        AudioManager.playPhaseComplete();
+        HapticsManager.cutSuccess();
+        showFloatingText(`${activeColor.toUpperCase()} LINKED!`, `var(--wire-${activeColor})`);
+        updateProgress();
+
+        const totalPairs = Object.keys(activeConfig.terminals).length;
+        if (Object.keys(completedPaths).length === totalPairs) {
+          // All circuits restored!
+          activeColor = null;
+          activePath = [];
+          updateCellClasses();
+          renderSvgTraces();
+          if (typeof onComplete === "function") {
+            onComplete();
+          }
+          return;
+        }
+      }
+
+      // Clear current uncompleted path
+      activeColor = null;
+      activePath = [];
+      updateCellClasses();
+      renderSvgTraces();
+    }
+
+    board.onpointerdown = handlePointerDown;
+    board.onpointermove = handlePointerMove;
+    board.onpointerup = handlePointerUp;
+    board.onpointercancel = handlePointerUp;
+  }
+
+  return { init, cleanup };
+})();
+
+/* =========================================================
+   SIGNAL MEMORY MANAGER (CAMPAIGN LEVEL 5: SIGNAL TRACE)
+========================================================= */
+const SignalMemoryManager = (() => {
+  let activeConfig = null;
+  let isRevealing = false;
+  let playerInputEnabled = false;
+  let playerSequence = [];
+  let revealTimeouts = [];
+  let onCompleteCallback = null;
+  let onFailCallback = null;
+  let onStartPlayableTimerCallback = null;
+
+  function init(config, onStartPlayableTimer, onComplete, onFail) {
+    cleanup();
+    activeConfig = config;
+    onStartPlayableTimerCallback = onStartPlayableTimer;
+    onCompleteCallback = onComplete;
+    onFailCallback = onFail;
+    playerSequence = [];
+    isRevealing = false;
+    playerInputEnabled = false;
+
+    if (!el.signalMemoryContainer || !el.signalMemoryBoard || !el.signalMemoryGrid) return;
+
+    el.signalMemoryContainer.style.display = "flex";
+    if (el.wiresContainer) el.wiresContainer.style.display = "none";
+    if (el.circuitFlowContainer) el.circuitFlowContainer.style.display = "none";
+
+    renderGrid();
+    startReveal();
+  }
+
+  function cleanup() {
+    revealTimeouts.forEach(t => clearTimeout(t));
+    revealTimeouts = [];
+    activeConfig = null;
+    isRevealing = false;
+    playerInputEnabled = false;
+    playerSequence = [];
+    onCompleteCallback = null;
+    onFailCallback = null;
+    onStartPlayableTimerCallback = null;
+
+    if (el.signalMemoryContainer) el.signalMemoryContainer.style.display = "none";
+  }
+
+  function renderGrid() {
+    if (!activeConfig || !el.signalMemoryGrid) return;
+    el.signalMemoryGrid.replaceChildren();
+
+    const { rows, cols } = activeConfig.grid;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const node = document.createElement("button");
+        node.type = "button";
+        node.className = "signal-node node-idle";
+        node.dataset.r = String(r);
+        node.dataset.c = String(c);
+        node.setAttribute("aria-label", `Signal Node row ${r + 1}, column ${c + 1}`);
+
+        const core = document.createElement("span");
+        core.className = "signal-node-core";
+        core.setAttribute("aria-hidden", "true");
+        node.appendChild(core);
+
+        const badge = document.createElement("span");
+        badge.className = "signal-node-badge";
+        badge.setAttribute("aria-hidden", "true");
+        node.appendChild(badge);
+
+        node.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          handleNodeClick(r, c, node);
+        });
+
+        el.signalMemoryGrid.appendChild(node);
+      }
+    }
+
+    updateProgressUI(0);
+  }
+
+  function getNodeEl(r, c) {
+    if (!el.signalMemoryGrid) return null;
+    return el.signalMemoryGrid.querySelector(`.signal-node[data-r="${r}"][data-c="${c}"]`);
+  }
+
+  function updateProgressUI(count) {
+    const total = activeConfig?.sequenceLength || 4;
+    if (el.signalProgressChip) {
+      el.signalProgressChip.textContent = `SEQUENCE ${count} / ${total}`;
+    }
+  }
+
+  function startReveal() {
+    if (!activeConfig) return;
+    isRevealing = true;
+    playerInputEnabled = false;
+    if (el.instruction) el.instruction.textContent = "WATCH THE SIGNAL";
+    if (el.signalProgressChip) el.signalProgressChip.textContent = "MEMORIZING PATTERN...";
+
+    const seq = activeConfig.sequence;
+    const activeMs = activeConfig.revealActiveMs || 450;
+    const gapMs = activeConfig.revealGapMs || 180;
+    const stepDuration = activeMs + gapMs;
+
+    setNodesDisabled(true);
+
+    seq.forEach(([r, c], idx) => {
+      // Illuminate node
+      const t1 = setTimeout(() => {
+        if (!isRevealing) return;
+        const nodeEl = getNodeEl(r, c);
+        if (nodeEl) {
+          nodeEl.classList.remove("node-idle");
+          nodeEl.classList.add("node-reveal-active");
+          AudioManager.playWireCut();
+        }
+      }, idx * stepDuration + 200);
+      revealTimeouts.push(t1);
+
+      // De-illuminate node
+      const t2 = setTimeout(() => {
+        if (!isRevealing) return;
+        const nodeEl = getNodeEl(r, c);
+        if (nodeEl) {
+          nodeEl.classList.remove("node-reveal-active");
+          nodeEl.classList.add("node-idle");
+        }
+      }, idx * stepDuration + 200 + activeMs);
+      revealTimeouts.push(t2);
+    });
+
+    // Reveal finish
+    const totalRevealTime = seq.length * stepDuration + 200 + activeMs + 200;
+    const tEnd = setTimeout(() => {
+      if (!isRevealing) return;
+      isRevealing = false;
+      showFloatingText("SEQUENCE LOCKED", "var(--accent)");
+      setBombStatus("ARMED");
+      if (el.instruction) el.instruction.textContent = "REPEAT THE SIGNAL";
+      updateProgressUI(0);
+
+      playerInputEnabled = true;
+      setNodesDisabled(false);
+
+      if (typeof onStartPlayableTimerCallback === "function") {
+        onStartPlayableTimerCallback();
+      }
+    }, totalRevealTime);
+    revealTimeouts.push(tEnd);
+  }
+
+  function setNodesDisabled(disabled) {
+    if (!el.signalMemoryGrid) return;
+    const nodes = el.signalMemoryGrid.querySelectorAll(".signal-node");
+    nodes.forEach(n => {
+      n.disabled = disabled;
+      n.classList.toggle("node-disabled", disabled);
+    });
+  }
+
+  function handleNodeClick(r, c, nodeEl) {
+    if (!playerInputEnabled || isRevealing || state !== "PLAYING" || run.inputLocked) return;
+
+    const currentStep = playerSequence.length;
+    const expected = activeConfig.sequence[currentStep];
+
+    if (!expected) return;
+
+    if (expected[0] === r && expected[1] === c) {
+      // Correct node tapped!
+      playerSequence.push([r, c]);
+      const stepNumber = playerSequence.length;
+
+      nodeEl.classList.remove("node-idle", "node-reveal-active");
+      nodeEl.classList.add("node-player-selected", "node-correct");
+      nodeEl.disabled = true;
+
+      const badge = nodeEl.querySelector(".signal-node-badge");
+      if (badge) badge.textContent = `[${stepNumber}]`;
+
+      AudioManager.playWireCut();
+      AudioManager.playPhaseComplete();
+      HapticsManager.cutSuccess();
+      updateProgressUI(stepNumber);
+
+      if (playerSequence.length === activeConfig.sequence.length) {
+        // Full sequence completed!
+        playerInputEnabled = false;
+        setNodesDisabled(true);
+        if (typeof onCompleteCallback === "function") {
+          onCompleteCallback();
+        }
+      }
+    } else {
+      // Incorrect node!
+      playerInputEnabled = false;
+      nodeEl.classList.remove("node-idle");
+      nodeEl.classList.add("node-wrong");
+      AudioManager.playWrongWire();
+      HapticsManager.cutFailure();
+
+      if (typeof onFailCallback === "function") {
+        onFailCallback("SIGNAL MISMATCH");
+      }
+    }
+  }
+
+  return { init, cleanup };
+})();
+
+/* =========================================================
+   WORD PUZZLE MANAGER (CAMPAIGN LEVEL 7: CODE WORD)
+========================================================= */
+const WordPuzzleManager = (() => {
+  let activeConfig = null;
+  let selectedIndices = [];
+  let isSubmitting = false;
+  let isResolved = false;
+  let onCompleteCallback = null;
+  let onFailCallback = null;
+
+  function init(config, onComplete, onFail) {
+    cleanup();
+    activeConfig = config;
+    selectedIndices = [];
+    isSubmitting = false;
+    isResolved = false;
+    onCompleteCallback = onComplete;
+    onFailCallback = onFail;
+
+    if (!el.wordPuzzleContainer || !el.wordTilesGrid || !el.wordAnswerRow) return;
+
+    el.wordPuzzleContainer.style.display = "flex";
+    if (el.wiresContainer) el.wiresContainer.style.display = "none";
+    if (el.circuitFlowContainer) el.circuitFlowContainer.style.display = "none";
+    if (el.signalMemoryContainer) el.signalMemoryContainer.style.display = "none";
+
+    render();
+    bindEvents();
+  }
+
+  function cleanup() {
+    activeConfig = null;
+    selectedIndices = [];
+    isSubmitting = false;
+    isResolved = false;
+    onCompleteCallback = null;
+    onFailCallback = null;
+
+    if (el.wordPuzzleContainer) el.wordPuzzleContainer.style.display = "none";
+    if (el.wordAnswerRow) {
+      el.wordAnswerRow.className = "word-answer-row";
+    }
+    if (el.wordPuzzleStatus) {
+      el.wordPuzzleStatus.textContent = "CODE INPUT";
+      el.wordPuzzleStatus.className = "word-puzzle-status";
+    }
+  }
+
+  function isActive() {
+    return Boolean(activeConfig && el.wordPuzzleContainer && el.wordPuzzleContainer.style.display !== "none" && !isResolved);
+  }
+
+  function render() {
+    if (!activeConfig || !el.wordTilesGrid) return;
+    el.wordTilesGrid.replaceChildren();
+
+    const letters = activeConfig.scrambledLetters || ["A", "L", "Y", "R", "E"];
+    letters.forEach((letter, idx) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "word-tile";
+      btn.dataset.index = String(idx);
+      btn.dataset.letter = letter;
+      btn.textContent = letter;
+      btn.setAttribute("aria-label", `Letter ${letter}`);
+
+      btn.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        selectLetter(idx);
+      });
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        selectLetter(idx);
+      });
+
+      el.wordTilesGrid.appendChild(btn);
+    });
+
+    updateUI();
+  }
+
+  function selectLetter(tileIndex) {
+    if (!activeConfig || isSubmitting || isResolved || state !== "PLAYING" || run?.inputLocked) return;
+    if (selectedIndices.includes(tileIndex)) return;
+    if (selectedIndices.length >= (activeConfig.word?.length || 5)) return;
+
+    selectedIndices.push(tileIndex);
+    if (typeof AudioManager?.playWireCut === "function") {
+      AudioManager.playWireCut();
+    }
+    updateUI();
+  }
+
+  function clearAnswer() {
+    if (!activeConfig || isSubmitting || isResolved || state !== "PLAYING" || run?.inputLocked) return;
+    if (selectedIndices.length === 0) return;
+
+    selectedIndices = [];
+    if (typeof AudioManager?.playWireCut === "function") {
+      AudioManager.playWireCut();
+    }
+    updateUI();
+  }
+
+  function submitAnswer() {
+    if (!activeConfig || isSubmitting || isResolved || state !== "PLAYING" || run?.inputLocked) return;
+    const wordTarget = activeConfig.word || "RELAY";
+    if (selectedIndices.length !== wordTarget.length) return;
+
+    const currentWord = selectedIndices.map(idx => activeConfig.scrambledLetters[idx]).join("");
+    isSubmitting = true;
+
+    if (currentWord === wordTarget) {
+      // Correct Code Word!
+      isResolved = true;
+      if (el.wordPuzzleStatus) {
+        el.wordPuzzleStatus.textContent = "CODE ACCEPTED";
+        el.wordPuzzleStatus.className = "word-puzzle-status status-accepted";
+      }
+      if (el.wordAnswerRow) {
+        el.wordAnswerRow.className = "word-answer-row row-accepted";
+      }
+      if (el.btnWordSubmit) el.btnWordSubmit.disabled = true;
+      if (el.btnWordClear) el.btnWordClear.disabled = true;
+
+      if (typeof AudioManager?.playPhaseComplete === "function") {
+        AudioManager.playPhaseComplete();
+      }
+      if (typeof HapticsManager?.cutSuccess === "function") {
+        HapticsManager.cutSuccess();
+      }
+
+      showFloatingText("CODE ACCEPTED", "var(--accent)");
+
+      later(() => {
+        if (typeof onCompleteCallback === "function") {
+          onCompleteCallback();
+        }
+      }, 280);
+    } else {
+      // Incorrect Code Word
+      if (el.wordPuzzleStatus) {
+        el.wordPuzzleStatus.textContent = "CODE REJECTED";
+        el.wordPuzzleStatus.className = "word-puzzle-status status-rejected";
+      }
+      if (el.wordAnswerRow) {
+        el.wordAnswerRow.className = "word-answer-row row-rejected";
+      }
+      if (el.btnWordSubmit) el.btnWordSubmit.disabled = true;
+
+      if (typeof AudioManager?.playWrongWire === "function") {
+        AudioManager.playWrongWire();
+      }
+      if (typeof HapticsManager?.cutFailure === "function") {
+        HapticsManager.cutFailure();
+      }
+
+      later(() => {
+        if (state !== "PLAYING" || isResolved) return;
+        selectedIndices = [];
+        isSubmitting = false;
+        if (el.wordPuzzleStatus) {
+          el.wordPuzzleStatus.textContent = "CODE INPUT";
+          el.wordPuzzleStatus.className = "word-puzzle-status";
+        }
+        if (el.wordAnswerRow) {
+          el.wordAnswerRow.className = "word-answer-row";
+        }
+        updateUI();
+      }, 480);
+    }
+  }
+
+  function updateUI() {
+    if (!activeConfig || !el.wordAnswerRow || !el.wordTilesGrid) return;
+
+    const targetLength = activeConfig.word?.length || 5;
+    const currentLetters = selectedIndices.map(idx => activeConfig.scrambledLetters[idx]);
+
+    // Update Answer Slots
+    for (let i = 0; i < targetLength; i++) {
+      const slotEl = el.wordAnswerRow.querySelector(`#word-slot-${i}`) || el.wordAnswerRow.children[i];
+      if (slotEl) {
+        const charSpan = slotEl.querySelector(".word-slot-char") || slotEl;
+        if (i < currentLetters.length) {
+          charSpan.textContent = currentLetters[i];
+          slotEl.classList.add("filled");
+        } else {
+          charSpan.textContent = "_";
+          slotEl.classList.remove("filled");
+        }
+      }
+    }
+
+    // Update Letter Tiles
+    const tileBtns = el.wordTilesGrid.querySelectorAll(".word-tile");
+    tileBtns.forEach((btn) => {
+      const idx = parseInt(btn.dataset.index, 10);
+      const isSelected = selectedIndices.includes(idx);
+      btn.disabled = isSelected || isSubmitting || isResolved;
+      btn.classList.toggle("tile-selected", isSelected);
+      btn.setAttribute("aria-disabled", isSelected ? "true" : "false");
+    });
+
+    // Update Submit & Clear Buttons
+    if (el.btnWordSubmit) {
+      const canSubmit = selectedIndices.length === targetLength && !isSubmitting && !isResolved;
+      el.btnWordSubmit.disabled = !canSubmit;
+      el.btnWordSubmit.setAttribute("aria-disabled", canSubmit ? "false" : "true");
+    }
+
+    if (el.btnWordClear) {
+      const canClear = selectedIndices.length > 0 && !isSubmitting && !isResolved;
+      el.btnWordClear.disabled = !canClear;
+      el.btnWordClear.setAttribute("aria-disabled", canClear ? "false" : "true");
+    }
+
+    if (el.wordPuzzleChip) {
+      el.wordPuzzleChip.textContent = `${currentLetters.length} / ${targetLength} LETTERS`;
+    }
+  }
+
+  function bindEvents() {
+    if (el.btnWordClear) {
+      el.btnWordClear.onclick = (e) => {
+        e.preventDefault();
+        clearAnswer();
+      };
+    }
+    if (el.btnWordSubmit) {
+      el.btnWordSubmit.onclick = (e) => {
+        e.preventDefault();
+        submitAnswer();
+      };
+    }
+  }
+
+  return { init, cleanup, isActive, selectLetter, clearAnswer, submitAnswer };
+})();
+
+const CampaignManager = (() => {
+  function renderLevelSelect() {
+    if (!profile.campaign) {
+      profile.campaign = {
+        currentChapter: 1,
+        unlockedLevels: [1],
+        levelStars: { 1: 0, 2: 0, 3: 0, 4: 0 },
+        levelHighScores: { 1: 0, 2: 0, 3: 0, 4: 0 },
+        levelFastestTimes: { 1: 0, 2: 0, 3: 0, 4: 0 }
+      };
+    }
+
+    const camp = profile.campaign;
+    const l1Stars = Math.min(3, Math.max(0, camp.levelStars?.[1] || 0));
+    const l2Stars = Math.min(3, Math.max(0, camp.levelStars?.[2] || 0));
+    const l3Stars = Math.min(3, Math.max(0, camp.levelStars?.[3] || 0));
+    const l4Stars = Math.min(3, Math.max(0, camp.levelStars?.[4] || 0));
+    const l5Stars = Math.min(3, Math.max(0, camp.levelStars?.[5] || 0));
+    const l6Stars = Math.min(3, Math.max(0, camp.levelStars?.[6] || 0));
+    const l7Stars = Math.min(3, Math.max(0, camp.levelStars?.[7] || 0));
+    const l8Stars = Math.min(3, Math.max(0, camp.levelStars?.[8] || 0));
+
+    // Update Level 1 Card
+    if (el.starsLevel1) {
+      const starSpans = el.starsLevel1.querySelectorAll(".star-icon");
+      starSpans.forEach((span, idx) => {
+        const isActive = idx < l1Stars;
+        span.className = `star-icon ${isActive ? "star-active" : "star-inactive"}`;
+      });
+      el.starsLevel1.setAttribute("aria-label", `Stars: ${l1Stars} of 3`);
+    }
+
+    // Update Level 2 Card
+    const isL2Unlocked = Array.isArray(camp.unlockedLevels) && camp.unlockedLevels.includes(2);
+    if (el.levelCard2) {
+      if (isL2Unlocked) {
+        el.levelCard2.classList.remove("level-card-locked");
+        el.levelCard2.classList.add("level-card-active");
+        if (el.descLevel2) el.descLevel2.textContent = "Two targets. One sequence.";
+        if (el.lockIcon2) {
+          el.lockIcon2.style.display = "none";
+        }
+        if (el.starsLevel2) {
+          el.starsLevel2.style.display = "flex";
+          const starSpans = el.starsLevel2.querySelectorAll(".star-icon");
+          starSpans.forEach((span, idx) => {
+            const isActive = idx < l2Stars;
+            span.className = `star-icon ${isActive ? "star-active" : "star-inactive"}`;
+          });
+          el.starsLevel2.setAttribute("aria-label", `Stars: ${l2Stars} of 3`);
+        }
+        if (el.btnPlayLevel2) {
+          el.btnPlayLevel2.textContent = "PLAY";
+          el.btnPlayLevel2.className = "btn btn-primary btn-play-level";
+          el.btnPlayLevel2.disabled = false;
+          el.btnPlayLevel2.setAttribute("aria-disabled", "false");
+        }
+      } else {
+        el.levelCard2.classList.add("level-card-locked");
+        el.levelCard2.classList.remove("level-card-active");
+        if (el.descLevel2) el.descLevel2.textContent = "Protocol locked.";
+        if (el.lockIcon2) {
+          el.lockIcon2.style.display = "inline-block";
+          el.lockIcon2.textContent = "🔒";
+          el.lockIcon2.setAttribute("aria-label", "Locked");
+        }
+        if (el.starsLevel2) {
+          el.starsLevel2.style.display = "none";
+        }
+        if (el.btnPlayLevel2) {
+          el.btnPlayLevel2.textContent = "LOCKED";
+          el.btnPlayLevel2.className = "btn btn-secondary btn-play-level";
+          el.btnPlayLevel2.disabled = true;
+          el.btnPlayLevel2.setAttribute("aria-disabled", "true");
+        }
+      }
+    }
+
+    // Update Level 3 Card
+    const isL3Unlocked = Array.isArray(camp.unlockedLevels) && camp.unlockedLevels.includes(3);
+    if (el.levelCard3) {
+      if (isL3Unlocked) {
+        el.levelCard3.classList.remove("level-card-locked");
+        el.levelCard3.classList.add("level-card-active");
+        if (el.descLevel3) el.descLevel3.textContent = "Three targets. One sequence.";
+        if (el.lockIcon3) {
+          el.lockIcon3.style.display = "none";
+        }
+        if (el.starsLevel3) {
+          el.starsLevel3.style.display = "flex";
+          const starSpans = el.starsLevel3.querySelectorAll(".star-icon");
+          starSpans.forEach((span, idx) => {
+            const isActive = idx < l3Stars;
+            span.className = `star-icon ${isActive ? "star-active" : "star-inactive"}`;
+          });
+          el.starsLevel3.setAttribute("aria-label", `Stars: ${l3Stars} of 3`);
+        }
+        if (el.btnPlayLevel3) {
+          el.btnPlayLevel3.textContent = "PLAY";
+          el.btnPlayLevel3.className = "btn btn-primary btn-play-level";
+          el.btnPlayLevel3.disabled = false;
+          el.btnPlayLevel3.setAttribute("aria-disabled", "false");
+        }
+      } else {
+        el.levelCard3.classList.add("level-card-locked");
+        el.levelCard3.classList.remove("level-card-active");
+        if (el.descLevel3) el.descLevel3.textContent = "Protocol locked.";
+        if (el.lockIcon3) {
+          el.lockIcon3.style.display = "inline-block";
+          el.lockIcon3.textContent = "🔒";
+          el.lockIcon3.setAttribute("aria-label", "Locked");
+        }
+        if (el.starsLevel3) {
+          el.starsLevel3.style.display = "none";
+        }
+        if (el.btnPlayLevel3) {
+          el.btnPlayLevel3.textContent = "LOCKED";
+          el.btnPlayLevel3.className = "btn btn-secondary btn-play-level";
+          el.btnPlayLevel3.disabled = true;
+          el.btnPlayLevel3.setAttribute("aria-disabled", "true");
+        }
+      }
+    }
+
+    // Update Level 4 Card
+    const isL4Unlocked = Array.isArray(camp.unlockedLevels) && camp.unlockedLevels.includes(4);
+    if (el.levelCard4) {
+      if (isL4Unlocked) {
+        el.levelCard4.classList.remove("level-card-locked");
+        el.levelCard4.classList.add("level-card-active");
+        if (el.descLevel4) el.descLevel4.textContent = "Restore the severed circuits.";
+        if (el.lockIcon4) {
+          el.lockIcon4.style.display = "none";
+        }
+        if (el.starsLevel4) {
+          el.starsLevel4.style.display = "flex";
+          const starSpans = el.starsLevel4.querySelectorAll(".star-icon");
+          starSpans.forEach((span, idx) => {
+            const isActive = idx < l4Stars;
+            span.className = `star-icon ${isActive ? "star-active" : "star-inactive"}`;
+          });
+          el.starsLevel4.setAttribute("aria-label", `Stars: ${l4Stars} of 3`);
+        }
+        if (el.btnPlayLevel4) {
+          el.btnPlayLevel4.textContent = "PLAY";
+          el.btnPlayLevel4.className = "btn btn-primary btn-play-level";
+          el.btnPlayLevel4.disabled = false;
+          el.btnPlayLevel4.setAttribute("aria-disabled", "false");
+        }
+      } else {
+        el.levelCard4.classList.add("level-card-locked");
+        el.levelCard4.classList.remove("level-card-active");
+        if (el.descLevel4) el.descLevel4.textContent = "Protocol locked.";
+        if (el.lockIcon4) {
+          el.lockIcon4.style.display = "inline-block";
+          el.lockIcon4.textContent = "🔒";
+          el.lockIcon4.setAttribute("aria-label", "Locked");
+        }
+        if (el.starsLevel4) {
+          el.starsLevel4.style.display = "none";
+        }
+        if (el.btnPlayLevel4) {
+          el.btnPlayLevel4.textContent = "LOCKED";
+          el.btnPlayLevel4.className = "btn btn-secondary btn-play-level";
+          el.btnPlayLevel4.disabled = true;
+          el.btnPlayLevel4.setAttribute("aria-disabled", "true");
+        }
+      }
+    }
+
+    // Update Level 5 Card
+    const isL5Unlocked = Array.isArray(camp.unlockedLevels) && camp.unlockedLevels.includes(5);
+    if (el.levelCard5) {
+      if (isL5Unlocked) {
+        el.levelCard5.classList.remove("level-card-locked");
+        el.levelCard5.classList.add("level-card-active");
+        if (el.descLevel5) el.descLevel5.textContent = "Remember the signal.";
+        if (el.lockIcon5) {
+          el.lockIcon5.style.display = "none";
+        }
+        if (el.starsLevel5) {
+          el.starsLevel5.style.display = "flex";
+          const starSpans = el.starsLevel5.querySelectorAll(".star-icon");
+          starSpans.forEach((span, idx) => {
+            const isActive = idx < l5Stars;
+            span.className = `star-icon ${isActive ? "star-active" : "star-inactive"}`;
+          });
+          el.starsLevel5.setAttribute("aria-label", `Stars: ${l5Stars} of 3`);
+        }
+        if (el.btnPlayLevel5) {
+          el.btnPlayLevel5.textContent = "PLAY";
+          el.btnPlayLevel5.className = "btn btn-primary btn-play-level";
+          el.btnPlayLevel5.disabled = false;
+          el.btnPlayLevel5.setAttribute("aria-disabled", "false");
+        }
+      } else {
+        el.levelCard5.classList.add("level-card-locked");
+        el.levelCard5.classList.remove("level-card-active");
+        if (el.descLevel5) el.descLevel5.textContent = "Protocol locked.";
+        if (el.lockIcon5) {
+          el.lockIcon5.style.display = "inline-block";
+          el.lockIcon5.textContent = "🔒";
+          el.lockIcon5.setAttribute("aria-label", "Locked");
+        }
+        if (el.starsLevel5) {
+          el.starsLevel5.style.display = "none";
+        }
+        if (el.btnPlayLevel5) {
+          el.btnPlayLevel5.textContent = "LOCKED";
+          el.btnPlayLevel5.className = "btn btn-secondary btn-play-level";
+          el.btnPlayLevel5.disabled = true;
+          el.btnPlayLevel5.setAttribute("aria-disabled", "true");
+        }
+      }
+    }
+
+    // Update Level 6 Card
+    const isL6Unlocked = Array.isArray(camp.unlockedLevels) && camp.unlockedLevels.includes(6);
+    if (el.levelCard6) {
+      if (isL6Unlocked) {
+        el.levelCard6.classList.remove("level-card-locked");
+        el.levelCard6.classList.add("level-card-active");
+        if (el.descLevel6) el.descLevel6.textContent = "Remember. Identify. Defuse.";
+        if (el.lockIcon6) {
+          el.lockIcon6.style.display = "none";
+        }
+        if (el.starsLevel6) {
+          el.starsLevel6.style.display = "flex";
+          const starSpans = el.starsLevel6.querySelectorAll(".star-icon");
+          starSpans.forEach((span, idx) => {
+            const isActive = idx < l6Stars;
+            span.className = `star-icon ${isActive ? "star-active" : "star-inactive"}`;
+          });
+          el.starsLevel6.setAttribute("aria-label", `Stars: ${l6Stars} of 3`);
+        }
+        if (el.btnPlayLevel6) {
+          el.btnPlayLevel6.textContent = "PLAY";
+          el.btnPlayLevel6.className = "btn btn-primary btn-play-level";
+          el.btnPlayLevel6.disabled = false;
+          el.btnPlayLevel6.setAttribute("aria-disabled", "false");
+        }
+      } else {
+        el.levelCard6.classList.add("level-card-locked");
+        el.levelCard6.classList.remove("level-card-active");
+        if (el.descLevel6) el.descLevel6.textContent = "Protocol locked.";
+        if (el.lockIcon6) {
+          el.lockIcon6.style.display = "inline-block";
+          el.lockIcon6.textContent = "🔒";
+          el.lockIcon6.setAttribute("aria-label", "Locked");
+        }
+        if (el.starsLevel6) {
+          el.starsLevel6.style.display = "none";
+        }
+        if (el.btnPlayLevel6) {
+          el.btnPlayLevel6.textContent = "LOCKED";
+          el.btnPlayLevel6.className = "btn btn-secondary btn-play-level";
+          el.btnPlayLevel6.disabled = true;
+          el.btnPlayLevel6.setAttribute("aria-disabled", "true");
+        }
+      }
+    }
+
+    // Update Level 7 Card
+    const isL7Unlocked = Array.isArray(camp.unlockedLevels) && camp.unlockedLevels.includes(7);
+    if (el.levelCard7) {
+      if (isL7Unlocked) {
+        el.levelCard7.classList.remove("level-card-locked");
+        el.levelCard7.classList.add("level-card-active");
+        if (el.descLevel7) el.descLevel7.textContent = "Decode the circuit.";
+        if (el.lockIcon7) {
+          el.lockIcon7.style.display = "none";
+        }
+        if (el.starsLevel7) {
+          el.starsLevel7.style.display = "flex";
+          const starSpans = el.starsLevel7.querySelectorAll(".star-icon");
+          starSpans.forEach((span, idx) => {
+            const isActive = idx < l7Stars;
+            span.className = `star-icon ${isActive ? "star-active" : "star-inactive"}`;
+          });
+          el.starsLevel7.setAttribute("aria-label", `Stars: ${l7Stars} of 3`);
+        }
+        if (el.btnPlayLevel7) {
+          el.btnPlayLevel7.textContent = "PLAY";
+          el.btnPlayLevel7.className = "btn btn-primary btn-play-level";
+          el.btnPlayLevel7.disabled = false;
+          el.btnPlayLevel7.setAttribute("aria-disabled", "false");
+        }
+      } else {
+        el.levelCard7.classList.add("level-card-locked");
+        el.levelCard7.classList.remove("level-card-active");
+        if (el.descLevel7) el.descLevel7.textContent = "Protocol locked.";
+        if (el.lockIcon7) {
+          el.lockIcon7.style.display = "inline-block";
+          el.lockIcon7.textContent = "🔒";
+          el.lockIcon7.setAttribute("aria-label", "Locked");
+        }
+        if (el.starsLevel7) {
+          el.starsLevel7.style.display = "none";
+        }
+        if (el.btnPlayLevel7) {
+          el.btnPlayLevel7.textContent = "LOCKED";
+          el.btnPlayLevel7.className = "btn btn-secondary btn-play-level";
+          el.btnPlayLevel7.disabled = true;
+          el.btnPlayLevel7.setAttribute("aria-disabled", "true");
+        }
+      }
+    }
+
+    // Update Level 8 Card
+    const isL8Unlocked = Array.isArray(camp.unlockedLevels) && camp.unlockedLevels.includes(8);
+    if (el.levelCard8) {
+      if (isL8Unlocked) {
+        el.levelCard8.classList.remove("level-card-locked");
+        el.levelCard8.classList.add("level-card-active");
+        if (el.descLevel8) el.descLevel8.textContent = "Coming Soon in next update.";
+        if (el.lockIcon8) {
+          el.lockIcon8.style.display = "inline-block";
+          el.lockIcon8.textContent = "⏳";
+          el.lockIcon8.setAttribute("aria-label", "Coming Soon");
+        }
+        if (el.btnPlayLevel8) {
+          el.btnPlayLevel8.textContent = "COMING SOON";
+          el.btnPlayLevel8.className = "btn btn-secondary btn-play-level";
+          el.btnPlayLevel8.disabled = true;
+          el.btnPlayLevel8.setAttribute("aria-disabled", "true");
+        }
+      } else {
+        el.levelCard8.classList.add("level-card-locked");
+        el.levelCard8.classList.remove("level-card-active");
+        if (el.descLevel8) el.descLevel8.textContent = "Protocol locked.";
+        if (el.lockIcon8) {
+          el.lockIcon8.style.display = "inline-block";
+          el.lockIcon8.textContent = "🔒";
+          el.lockIcon8.setAttribute("aria-label", "Locked");
+        }
+        if (el.starsLevel8) {
+          el.starsLevel8.style.display = "none";
+        }
+        if (el.btnPlayLevel8) {
+          el.btnPlayLevel8.textContent = "LOCKED";
+          el.btnPlayLevel8.className = "btn btn-secondary btn-play-level";
+          el.btnPlayLevel8.disabled = true;
+          el.btnPlayLevel8.setAttribute("aria-disabled", "true");
+        }
+      }
+    }
+  }
+
+  function openLevelSelect() {
+    renderLevelSelect();
+    state = "CAMPAIGN_SELECT";
+    showScreen("campaign-select");
+  }
+
+  function openBriefing(levelNum = 1) {
+    const levelDef = CampaignConfig.levels[levelNum];
+    if (!levelDef) return;
+    campaignCurrentLevel = levelNum;
+
+    if (el.campaignBriefingBadge) {
+      el.campaignBriefingBadge.textContent = `CHAPTER ${levelDef.chapter} · ${levelDef.subtitle}`;
+    }
+    if (el.campaignBriefingTitle) {
+      el.campaignBriefingTitle.textContent = levelDef.title;
+    }
+    if (el.campaignBriefingDesc) {
+      el.campaignBriefingDesc.textContent = `"${levelDef.briefing}"`;
+    }
+
+    if (el.campaignBriefingRules && Array.isArray(levelDef.rulesInfo)) {
+      el.campaignBriefingRules.replaceChildren();
+      levelDef.rulesInfo.forEach(r => {
+        const item = document.createElement("div");
+        item.className = "briefing-rule-item";
+        item.innerHTML = `
+          <span class="briefing-rule-icon" aria-hidden="true">${r.icon}</span>
+          <div class="briefing-rule-text">
+            <strong>${r.label}</strong>
+            <span>${r.desc}</span>
+          </div>
+        `;
+        el.campaignBriefingRules.appendChild(item);
+      });
+    }
+
+    state = "CAMPAIGN_BRIEFING";
+    showScreen("campaign-briefing");
+  }
+
+  function startLevel(levelNum = 1) {
+    const levelDef = CampaignConfig.levels[levelNum];
+    if (!levelDef) return;
+
+    clearPendingTransitions();
+    Timer.stop();
+    PowerManager.cleanup();
+    AudioManager.init();
+
+    gameMode = "CAMPAIGN";
+    campaignCurrentLevel = levelNum;
+
+    run = newRun();
+    run.bombNumber = 1;
+    run.isCampaign = true;
+    run.campaignLevel = levelNum;
+    run.powerUsedOnRun = false;
+
+    state = "PLAYING";
+    if (screens.game) {
+      screens.game.style.setProperty("--danger-level", "0");
+      screens.game.classList.remove(
+        "danger-warning", "danger-danger", "danger-critical",
+        "difficulty-easy", "difficulty-normal", "difficulty-hard", "difficulty-veryhard", "difficulty-extreme"
+      );
+      screens.game.classList.add("danger-safe", "difficulty-easy");
+    }
+    if (el.dailyHudBanner) el.dailyHudBanner.style.display = "none";
+    if (el.hudTimeBank) el.hudTimeBank.style.display = "none";
+
+    showScreen("game");
+
+    if (el.hudScore) el.hudScore.textContent = "0";
+    if (el.hudBombLabel) el.hudBombLabel.textContent = `LEVEL ${String(levelDef.level).padStart(2, "0")}`;
+    if (el.hudStreak) el.hudStreak.textContent = `CH ${levelDef.chapter}`;
+    if (el.hudBest) el.hudBest.textContent = String(profile.campaign?.levelHighScores?.[levelNum] || 0);
+    const bestLabel = byId("hud-best-label");
+    if (bestLabel) bestLabel.textContent = "BEST";
+
+    if (el.bomb) {
+      BombVisualVariants.forEach(v => el.bomb.classList.remove(v.className));
+      Object.values(BombEventRegistry).forEach(evt => el.bomb.classList.remove(evt.className));
+      el.bomb.classList.remove("exploding", "shaking", "success-pulse", "failure-pulse", "pcb-pulse-phase");
+      const sysCodeEl = el.bomb.querySelector(".bomb-sys-code");
+      if (sysCodeEl) {
+        sysCodeEl.textContent = `CH1-LVL${levelDef.level}`;
+      }
+    }
+
+    setBombStatus("ARMING");
+
+    if (levelDef.gameplayType === "SIGNAL_MEMORY") {
+      CircuitFlowManager.cleanup();
+      run.bomb = {
+        number: 1,
+        wires: [],
+        time: levelDef.timer,
+        challenge: { text: "MEMORIZE THE SIGNAL" },
+        phases: [],
+        currentPhaseIndex: 0,
+        totalPhases: 1,
+        event: null
+      };
+
+      if (el.instruction) el.instruction.textContent = "WATCH THE SIGNAL";
+      if (el.wiresContainer) el.wiresContainer.style.display = "none";
+      if (el.circuitFlowContainer) el.circuitFlowContainer.style.display = "none";
+      if (el.signalMemoryContainer) el.signalMemoryContainer.style.display = "flex";
+
+      renderTimer(levelDef.timer, levelDef.timer);
+      setBombStatus("RECORDING");
+
+      SignalMemoryManager.init(
+        levelDef.memoryConfig,
+        () => {
+          Timer.start(levelDef.timer, renderTimer, () => {
+            SignalMemoryManager.cleanup();
+            failLevel(levelNum, "TIME'S UP!");
+          });
+        },
+        () => {
+          const remaining = Timer.remaining;
+          Timer.stop();
+          setBombStatus("DEFUSED");
+          completeLevel(levelNum, {
+            completed: true,
+            secondsLeft: remaining,
+            timeElapsed: Math.max(0, levelDef.timer - remaining),
+            powerUsed: Boolean(run.powerUsedOnRun)
+          });
+        },
+        (failReason) => {
+          Timer.stop();
+          SignalMemoryManager.cleanup();
+          explode(failReason || "SIGNAL MISMATCH");
+        }
+      );
+    } else if (levelDef.gameplayType === "COMBINATION") {
+      // COMBINATION: Phase 1 = Signal Memory, Phase 2 = Wire Defusal
+      CircuitFlowManager.cleanup();
+      if (el.circuitFlowContainer) el.circuitFlowContainer.style.display = "none";
+      if (el.wiresContainer) el.wiresContainer.style.display = "none";
+      if (el.signalMemoryContainer) el.signalMemoryContainer.style.display = "flex";
+
+      run.bomb = {
+        number: 1,
+        wires: [],
+        time: levelDef.timer,
+        challenge: { text: "MEMORIZE THE SIGNAL" },
+        phases: [],
+        currentPhaseIndex: 0,
+        totalPhases: 2,
+        event: null
+      };
+
+      if (el.instruction) el.instruction.textContent = "PHASE 1/2 · WATCH THE SIGNAL";
+      renderTimer(levelDef.timer, levelDef.timer);
+      setBombStatus("RECORDING");
+
+      SignalMemoryManager.init(
+        levelDef.memoryConfig,
+        // onStartPlayableTimer: called after reveal, start the countdown
+        () => {
+          Timer.start(levelDef.timer, renderTimer, () => {
+            SignalMemoryManager.cleanup();
+            CampaignManager.failLevel(levelNum, "TIME'S UP!");
+          });
+        },
+        // onComplete: Phase 1 success — transition to Phase 2 (wire defusal)
+        () => {
+          if (state !== "PLAYING") return;
+          SignalMemoryManager.cleanup();
+
+          // Short transition lock
+          run.inputLocked = true;
+          if (el.instruction) el.instruction.textContent = "PHASE 1/2 · SIGNAL LOCKED";
+          setBombStatus("ARMED");
+          AudioManager.playPhaseComplete ? AudioManager.playPhaseComplete() : null;
+          if (el.bomb) {
+            el.bomb.classList.add("pcb-pulse-phase");
+            later(() => el.bomb?.classList.remove("pcb-pulse-phase"), 350);
+          }
+
+          later(() => {
+            if (state !== "PLAYING") return;
+
+            // Build Phase 2: wire defusal
+            const targetMapping = levelDef.targetMapping;
+            const wires = levelDef.wires.map(w => ({ ...w, cut: false }));
+            const phase2 = {
+              phaseIndex: 1,
+              totalPhases: 2,
+              type: "color",
+              text: `CUT THE ${(targetMapping.wireColor || "yellow").toUpperCase()} WIRE`,
+              answerIndex: targetMapping.wireIndex
+            };
+
+            run.bomb.wires = wires;
+            run.bomb.phases = [phase2];
+            run.bomb.challenge = { ...phase2 };
+            run.bomb.currentPhaseIndex = 0;
+            run.bomb.totalPhases = 1;
+
+            if (el.signalMemoryContainer) el.signalMemoryContainer.style.display = "none";
+            if (el.wiresContainer) el.wiresContainer.style.display = "flex";
+
+            if (el.instruction) el.instruction.textContent = `PHASE 2/2 · ${phase2.text}`;
+            renderWires(run.bomb.wires);
+            run.inputLocked = false;
+          }, 480);
+        },
+        // onFail: Phase 1 wrong node
+        (failReason) => {
+          Timer.stop();
+          SignalMemoryManager.cleanup();
+          explode(failReason || "SIGNAL MISMATCH");
+        }
+      );
+    } else if (levelDef.gameplayType === "WORD_PUZZLE") {
+      CircuitFlowManager.cleanup();
+      SignalMemoryManager.cleanup();
+      if (el.circuitFlowContainer) el.circuitFlowContainer.style.display = "none";
+      if (el.signalMemoryContainer) el.signalMemoryContainer.style.display = "none";
+      if (el.wiresContainer) el.wiresContainer.style.display = "none";
+      if (el.wordPuzzleContainer) el.wordPuzzleContainer.style.display = "flex";
+
+      run.bomb = {
+        number: 1,
+        wires: [],
+        time: levelDef.timer,
+        challenge: { text: "DECODE THE CODE WORD" },
+        phases: [],
+        currentPhaseIndex: 0,
+        totalPhases: 2,
+        event: null
+      };
+
+      if (el.instruction) el.instruction.textContent = "DECODE THE CODE WORD";
+      renderTimer(levelDef.timer, levelDef.timer);
+      setBombStatus("ARMED");
+
+      WordPuzzleManager.init(
+        levelDef.wordConfig,
+        // onComplete: Phase 1 success -> transition to Phase 2 (wire defusal)
+        () => {
+          if (state !== "PLAYING") return;
+          WordPuzzleManager.cleanup();
+
+          run.inputLocked = true;
+          if (el.instruction) el.instruction.textContent = "CODE ACCEPTED";
+          setBombStatus("ARMED");
+
+          if (el.bomb) {
+            el.bomb.classList.add("pcb-pulse-phase");
+            later(() => el.bomb?.classList.remove("pcb-pulse-phase"), 350);
+          }
+
+          later(() => {
+            if (state !== "PLAYING") return;
+
+            const targetMapping = levelDef.wordConfig.targetMapping;
+            const wires = levelDef.wires.map(w => ({ ...w, cut: false }));
+            const phase2 = {
+              phaseIndex: 1,
+              totalPhases: 2,
+              type: "color",
+              text: `CUT THE ${(targetMapping.wireColor || "blue").toUpperCase()} WIRE`,
+              answerIndex: targetMapping.wireIndex
+            };
+
+            run.bomb.wires = wires;
+            run.bomb.phases = [phase2];
+            run.bomb.challenge = { ...phase2 };
+            run.bomb.currentPhaseIndex = 0;
+            run.bomb.totalPhases = 1;
+
+            if (el.wordPuzzleContainer) el.wordPuzzleContainer.style.display = "none";
+            if (el.wiresContainer) el.wiresContainer.style.display = "flex";
+
+            if (el.instruction) el.instruction.textContent = `PHASE 2/2 · ${phase2.text}`;
+            renderWires(run.bomb.wires);
+            run.inputLocked = false;
+          }, 260);
+        },
+        // onFail
+        (failReason) => {
+          Timer.stop();
+          WordPuzzleManager.cleanup();
+          explode(failReason || "CODE REJECTED");
+        }
+      );
+    } else if (levelDef.gameplayType === "FREE_FLOW") {
+      CircuitFlowManager.cleanup();
+      SignalMemoryManager.cleanup();
+      WordPuzzleManager.cleanup();
+      if (el.wordPuzzleContainer) el.wordPuzzleContainer.style.display = "none";
+      if (el.signalMemoryContainer) el.signalMemoryContainer.style.display = "none";
+
+      run.bomb = {
+        number: 1,
+        wires: [],
+        time: levelDef.timer,
+        challenge: { text: "RESTORE ALL CIRCUITS" },
+        phases: [],
+        currentPhaseIndex: 0,
+        totalPhases: 1,
+        event: null
+      };
+
+      if (el.instruction) el.instruction.textContent = "RESTORE ALL CIRCUITS";
+      if (el.wiresContainer) el.wiresContainer.style.display = "none";
+      if (el.circuitFlowContainer) el.circuitFlowContainer.style.display = "flex";
+
+      CircuitFlowManager.init(levelDef.circuitConfig, () => {
+        const remaining = Timer.remaining;
+        Timer.stop();
+        setBombStatus("DEFUSED");
+        completeLevel(levelNum, {
+          completed: true,
+          secondsLeft: remaining,
+          timeElapsed: Math.max(0, levelDef.timer - remaining),
+          powerUsed: Boolean(run.powerUsedOnRun)
+        });
+      });
+    } else {
+      CircuitFlowManager.cleanup();
+      SignalMemoryManager.cleanup();
+      WordPuzzleManager.cleanup();
+      if (el.wordPuzzleContainer) el.wordPuzzleContainer.style.display = "none";
+      if (el.signalMemoryContainer) el.signalMemoryContainer.style.display = "none";
+      if (el.circuitFlowContainer) el.circuitFlowContainer.style.display = "none";
+      if (el.wiresContainer) el.wiresContainer.style.display = "flex";
+
+      const wires = levelDef.wires.map(w => ({ ...w, cut: false }));
+      const phases = levelDef.phases ? levelDef.phases.map(p => ({ ...p })) : [{ phaseIndex: 0, totalPhases: 1, ...levelDef.rule }];
+      const totalPhases = phases.length;
+      const initialChallenge = { ...phases[0] };
+
+      run.bomb = {
+        number: 1,
+        wires: wires,
+        time: levelDef.timer,
+        challenge: initialChallenge,
+        phases: phases,
+        currentPhaseIndex: 0,
+        totalPhases: totalPhases,
+        event: null
+      };
+
+      if (el.instruction) {
+        if (totalPhases > 1) {
+          el.instruction.textContent = `PHASE 1/${totalPhases} · ${initialChallenge.text}`;
+        } else {
+          el.instruction.textContent = initialChallenge.text;
+        }
+      }
+
+      renderWires(run.bomb.wires);
+    }
+
+    AudioManager.resetTickTracker();
+    PowerManager.clearScanner();
+    updatePowerUI();
+
+    if (levelDef.gameplayType !== "SIGNAL_MEMORY" && levelDef.gameplayType !== "COMBINATION") {
+      later(() => {
+        if (state === "PLAYING" && !PowerManager.isFrozen && !PowerManager.isSlowed) {
+          setBombStatus("ARMED");
+        }
+      }, 180);
+
+      Timer.start(levelDef.timer, renderTimer, () => {
+        if (levelDef.gameplayType === "FREE_FLOW") {
+          CircuitFlowManager.cleanup();
+          failLevel(levelNum, "TIME'S UP!");
+        } else if (levelDef.gameplayType === "WORD_PUZZLE") {
+          WordPuzzleManager.cleanup();
+          failLevel(levelNum, "TIME'S UP!");
+        } else {
+          explode("TIME'S UP!");
+        }
+      });
+    }
+  }
+
+  function completeLevel(levelNum, ctx) {
+    const levelDef = CampaignConfig.levels[levelNum];
+    if (!levelDef) return;
+
+    if (!profile.campaign) {
+      profile.campaign = {
+        currentChapter: 1,
+        unlockedLevels: [1],
+        levelStars: { 1: 0 },
+        levelHighScores: { 1: 0 },
+        levelFastestTimes: { 1: 0 }
+      };
+    }
+
+    const { secondsLeft, timeElapsed, powerUsed } = ctx;
+
+    // Evaluate star conditions dynamically for this level
+    let starsEarned = 0;
+    const starResults = [];
+    if (Array.isArray(levelDef.starConditions)) {
+      levelDef.starConditions.forEach((cond, idx) => {
+        const passed = Boolean(cond.test(ctx));
+        starResults[idx] = passed;
+        if (passed) starsEarned += 1;
+      });
+    } else {
+      starsEarned = 1;
+    }
+
+    const baseScore = levelDef.baseReward?.score || 100;
+    const timeBonus = Math.round(secondsLeft * 20);
+    const starBonus = starsEarned * 50;
+    const finalScore = baseScore + timeBonus + starBonus;
+
+    const prevStars = profile.campaign.levelStars?.[levelNum] || 0;
+    const isFirstClear = prevStars === 0;
+    const coinsReward = isFirstClear ? (levelDef.baseReward?.coins || 50) : 15;
+
+    // Progression save: unlock next level
+    const nextLevelNum = levelNum + 1;
+    if (!profile.campaign.unlockedLevels.includes(nextLevelNum)) {
+      profile.campaign.unlockedLevels.push(nextLevelNum);
+      profile.campaign.unlockedLevels.sort((a, b) => a - b);
+    }
+    profile.campaign.levelStars[levelNum] = Math.max(prevStars, starsEarned);
+    profile.campaign.levelHighScores[levelNum] = Math.max(profile.campaign.levelHighScores?.[levelNum] || 0, finalScore);
+    const prevFastest = profile.campaign.levelFastestTimes?.[levelNum] || 0;
+    if (prevFastest === 0 || timeElapsed < prevFastest) {
+      profile.campaign.levelFastestTimes[levelNum] = Number(timeElapsed.toFixed(2));
+    }
+
+    profile.coins += coinsReward;
+    profile.stats.totalCoinsEarned = (profile.stats.totalCoinsEarned || 0) + coinsReward;
+    profile.stats.totalBombsDefused = (profile.stats.totalBombsDefused || 0) + 1;
+    profile.stats.totalScore = (profile.stats.totalScore || 0) + finalScore;
+
+    SaveManager.save(profile);
+    refreshPersistentUI();
+
+    // Result UI Population
+    if (el.campaignResultTitle) {
+      el.campaignResultTitle.textContent = "LEVEL COMPLETE";
+      el.campaignResultTitle.style.color = "var(--accent)";
+    }
+    if (el.campaignResultSubtitle) {
+      el.campaignResultSubtitle.textContent = levelDef.title;
+    }
+
+    // Set 3 stars
+    [el.resultStar1, el.resultStar2, el.resultStar3].forEach((starEl, idx) => {
+      if (!starEl) return;
+      starEl.classList.toggle("star-active", Boolean(starResults[idx]));
+    });
+
+    if (el.campaignResultScore) el.campaignResultScore.textContent = finalScore.toLocaleString();
+    if (el.campaignResultTime) el.campaignResultTime.textContent = `${timeElapsed.toFixed(1)}s`;
+    if (el.campaignResultCoins) el.campaignResultCoins.textContent = `+${coinsReward} COINS`;
+    if (el.btnCampaignNextLevel) el.btnCampaignNextLevel.style.display = "block";
+
+    later(() => {
+      state = "CAMPAIGN_RESULT";
+      showScreen("campaign-result");
+    }, 480);
+  }
+
+  function failLevel(levelNum, reason = "WRONG WIRE") {
+    const levelDef = CampaignConfig.levels[levelNum] || { title: "FIRST CUT" };
+    CircuitFlowManager.cleanup();
+    SignalMemoryManager.cleanup();
+    WordPuzzleManager.cleanup();
+
+    profile.stats.totalBombsFailed = (profile.stats.totalBombsFailed || 0) + 1;
+    SaveManager.save(profile);
+    refreshPersistentUI();
+
+    if (el.campaignResultTitle) {
+      el.campaignResultTitle.textContent = "LEVEL FAILED";
+      el.campaignResultTitle.style.color = "var(--danger)";
+    }
+    if (el.campaignResultSubtitle) {
+      el.campaignResultSubtitle.textContent = reason === "TIME'S UP!" ? "TIME EXPIRED" : (reason === "SIGNAL MISMATCH" ? "SIGNAL MISMATCH" : (reason === "WRONG WIRE" ? "WRONG WIRE CUT" : reason));
+    }
+
+    // Reset stars to inactive
+    [el.resultStar1, el.resultStar2, el.resultStar3].forEach(starEl => {
+      if (starEl) starEl.classList.remove("star-active");
+    });
+
+    if (el.campaignResultScore) el.campaignResultScore.textContent = "0";
+    if (el.campaignResultTime) el.campaignResultTime.textContent = "FAILED";
+    if (el.campaignResultCoins) el.campaignResultCoins.textContent = "+0 COINS";
+    if (el.btnCampaignNextLevel) el.btnCampaignNextLevel.style.display = "none";
+
+    state = "CAMPAIGN_RESULT";
+    showScreen("campaign-result");
+  }
+
+  return {
+    renderLevelSelect,
+    openLevelSelect,
+    openBriefing,
+    startLevel,
+    completeLevel,
+    failLevel
+  };
+})();
+
+/* =========================================================
    PROFILE & SETTINGS UI CONTROLLERS
 ========================================================= */
 function updateMenuAccountBadge() {
@@ -4110,13 +6802,19 @@ function updateMenuAccountBadge() {
     el.popupDisplayName.textContent = acc.displayName || (isRegistered ? "Player" : "Guest");
   }
   if (el.popupEmail) {
-    el.popupEmail.textContent = isRegistered ? (acc.email || acc.provider.toUpperCase()) : "GUEST";
+    el.popupEmail.textContent = isRegistered ? (acc.email || `${acc.provider.toUpperCase()} • ${netText}`) : "GUEST • LOCAL";
   }
   if (el.popupStatusText) {
     el.popupStatusText.textContent = netText;
   }
   if (el.popupStatusDot) {
     el.popupStatusDot.textContent = isOnline ? "●" : "○";
+  }
+  if (el.popupStatus) {
+    el.popupStatus.style.display = isRegistered ? "flex" : "none";
+  }
+  if (el.menuCoins) {
+    el.menuCoins.textContent = profile.coins.toLocaleString();
   }
   if (el.popupAuthActions) {
     el.popupAuthActions.style.display = isRegistered ? "flex" : "none";
@@ -4135,7 +6833,7 @@ function updateMenuAccountBadge() {
   }
   const btnPlay = byId("btn-play");
   if (btnPlay) {
-    btnPlay.textContent = isRegistered ? "PLAY NORMAL" : "PLAY AS GUEST";
+    btnPlay.textContent = "ENDLESS RUN";
   }
 }
 
@@ -4212,24 +6910,49 @@ const AvatarPickerUI = {
   save() {
     AuthManager.setAvatar(this.selectedAvatar);
     ProfileUI.render();
-    SettingsUI.render();
+    AccountSettingsUI.render();
     showScreen("profile");
     showToast("AVATAR UPDATED", "success");
   },
 };
 
-const SettingsUI = {
+const GameSettingsUI = {
+  render() {
+    if (el.btnSettingsToggleSound) {
+      const soundOn = Boolean(profile.soundEnabled);
+      el.btnSettingsToggleSound.textContent = soundOn ? "ON" : "OFF";
+      el.btnSettingsToggleSound.classList.toggle("on", soundOn);
+      el.btnSettingsToggleSound.classList.toggle("off", !soundOn);
+    }
+    if (byId("btn-settings-toggle-haptics")) {
+      const hapticsBtn = byId("btn-settings-toggle-haptics");
+      const hapticsOn = profile.hapticsEnabled !== false;
+      hapticsBtn.textContent = hapticsOn ? "ON" : "OFF";
+      hapticsBtn.classList.toggle("on", hapticsOn);
+      hapticsBtn.classList.toggle("off", !hapticsOn);
+    }
+    if (el.btnSettingsToggleMotion) {
+      const prefersReduced = Boolean(profile.reducedMotion || document.body.classList.contains("reduced-motion-override"));
+      el.btnSettingsToggleMotion.textContent = prefersReduced ? "ON" : "OFF";
+      el.btnSettingsToggleMotion.classList.toggle("on", prefersReduced);
+      el.btnSettingsToggleMotion.classList.toggle("off", !prefersReduced);
+    }
+  },
+};
+
+const AccountSettingsUI = {
   render() {
     const acc = profile.account;
     const avatarDef = AuthManager.getAvatarDef(acc.avatar);
+    const isRegistered = Boolean(acc.mode === "registered" && acc.userId);
 
     if (el.settingsDisplayNameVal) el.settingsDisplayNameVal.textContent = acc.displayName || "Guest";
     if (el.settingsAvatarVal) el.settingsAvatarVal.textContent = `${avatarDef.name} (${avatarDef.icon})`;
     if (el.settingsProviderVal) {
-      el.settingsProviderVal.textContent = acc.mode === "registered" ? `${acc.provider.toUpperCase()}` : "Guest (Local Save)";
+      el.settingsProviderVal.textContent = isRegistered ? `${acc.provider.toUpperCase()}` : "Guest (Local Save)";
     }
     if (el.settingsCloudBadge) {
-      el.settingsCloudBadge.textContent = acc.mode === "registered" ? "CLOUD SYNC" : "LOCAL ONLY";
+      el.settingsCloudBadge.textContent = isRegistered ? "CLOUD SYNC" : "LOCAL ONLY";
     }
     if (el.settingsStatusVal) el.settingsStatusVal.textContent = "Active";
 
@@ -4237,21 +6960,24 @@ const SettingsUI = {
       const active = Boolean(profile.privacy?.analytics);
       el.btnToggleAnalytics.textContent = active ? "ON" : "OFF";
       el.btnToggleAnalytics.classList.toggle("on", active);
+      el.btnToggleAnalytics.classList.toggle("off", !active);
     }
     if (el.btnToggleAds) {
       const active = Boolean(profile.privacy?.personalizedAds);
       el.btnToggleAds.textContent = active ? "ON" : "OFF";
       el.btnToggleAds.classList.toggle("on", active);
+      el.btnToggleAds.classList.toggle("off", !active);
     }
-    if (el.btnSettingsToggleSound) {
-      el.btnSettingsToggleSound.textContent = profile.soundEnabled ? "ON" : "OFF";
-      el.btnSettingsToggleSound.classList.toggle("on", profile.soundEnabled);
+    if (el.btnLogout) {
+      el.btnLogout.style.display = isRegistered ? "block" : "none";
     }
-    if (el.btnSettingsToggleMotion) {
-      const prefersReduced = Boolean(document.body.classList.contains("reduced-motion-override"));
-      el.btnSettingsToggleMotion.textContent = prefersReduced ? "ON" : "OFF";
-      el.btnSettingsToggleMotion.classList.toggle("on", prefersReduced);
-    }
+  },
+};
+
+const SettingsUI = {
+  render() {
+    GameSettingsUI.render();
+    AccountSettingsUI.render();
   },
 };
 
@@ -4266,7 +6992,13 @@ function startGame() {
   gameMode = "NORMAL";
   run = newRun();
   state = "PLAYING";
+  if (screens.game) {
+    screens.game.style.setProperty("--danger-level", "0");
+    screens.game.classList.remove("danger-warning", "danger-danger", "danger-critical");
+    screens.game.classList.add("danger-safe");
+  }
   if (el.dailyHudBanner) el.dailyHudBanner.style.display = "none";
+  if (el.hudTimeBank) el.hudTimeBank.style.display = "none";
   showScreen("game");
   updateHud();
   updatePowerUI();
@@ -4310,6 +7042,12 @@ function startDailyChallenge() {
   }
 
   state = "PLAYING";
+  if (screens.game) {
+    screens.game.style.setProperty("--danger-level", "0");
+    screens.game.classList.remove("danger-warning", "danger-danger", "danger-critical");
+    screens.game.classList.add("danger-safe");
+  }
+  if (el.hudTimeBank) el.hudTimeBank.style.display = "none";
   showScreen("game");
   AudioManager.playDailyStart();
 
@@ -4327,6 +7065,7 @@ function startDailyChallenge() {
 function nextBomb() {
   if (state !== "PLAYING") return;
   run.inputLocked = false;
+  if (el.hudTimeBank) el.hudTimeBank.style.display = "none";
 
   if (gameMode === "DAILY") {
     if (!cachedDailyChallenge) {
@@ -4334,27 +7073,73 @@ function nextBomb() {
     }
     const stageIndex = Math.min(GameConfig.daily.bombCount - 1, Math.max(0, run.bombNumber - 1));
     const bombDef = cachedDailyChallenge[stageIndex];
+    const wires = bombDef.wires.map(w => ({ ...w, cut: false }));
     run.bomb = {
       number: run.bombNumber,
-      wires: bombDef.wires.map(w => ({ ...w })),
+      wires,
       time: bombDef.time + UpgradeManager.timeBonus(),
       challenge: bombDef.challenge,
+      phases: [{ phaseIndex: 0, totalPhases: 1, ...bombDef.challenge }],
+      currentPhaseIndex: 0,
+      totalPhases: 1,
+      event: null,
     };
     el.hudBombLabel.textContent = `BOMB ${run.bomb.number} / 7`;
     updateDailyTrackerUI();
   } else {
+    const diffKey = getEndlessDifficulty(run.bombNumber);
+    run.difficulty = diffKey;
+    const diffCfg = EndlessDifficultyConfig[diffKey];
     run.bomb = BombFactory.create(run.bombNumber, run);
+    const startBank = run.timeBank || 0;
+    const baseTime = getEndlessBaseTime(run.bombNumber);
+    const totalStartTime = Math.max(EndlessTimerConfig.minTime, baseTime + UpgradeManager.timeBonus() + startBank);
+    run.bomb.time = totalStartTime;
+    run.timeBank = 0; // consumed immediately for active bomb
+
     el.hudBombLabel.textContent = `BOMB ${run.bomb.number}`;
+
+    if (screens.game) {
+      screens.game.classList.remove("difficulty-easy", "difficulty-normal", "difficulty-hard", "difficulty-veryhard", "difficulty-extreme");
+      screens.game.classList.add(`difficulty-${diffKey.toLowerCase()}`);
+    }
   }
 
-  el.bomb.classList.remove("exploding", "shaking", "success-pulse", "failure-pulse");
+  const variantIndex = (run.bombNumber - 1) % BombVisualVariants.length;
+  const currentVariant = BombVisualVariants[variantIndex];
+  if (el.bomb) {
+    BombVisualVariants.forEach(v => el.bomb.classList.remove(v.className));
+    Object.values(BombEventRegistry).forEach(evt => el.bomb.classList.remove(evt.className));
+    el.bomb.classList.add(currentVariant.className);
+    if (run.bomb.event) {
+      el.bomb.classList.add(run.bomb.event.className);
+    }
+    const sysCodeEl = el.bomb.querySelector(".bomb-sys-code");
+    if (sysCodeEl) {
+      sysCodeEl.textContent = run.bomb.event ? `[${run.bomb.event.displayName}]` : currentVariant.label;
+    }
+  }
+
+  el.bomb.classList.remove("exploding", "shaking", "success-pulse", "failure-pulse", "pcb-pulse-phase");
   setBombStatus("ARMING");
-  el.instruction.textContent = run.bomb.challenge.text;
+  
+  const evtPrefix = run.bomb.event ? `[${run.bomb.event.displayName}] ` : "";
+  if (run.bomb.totalPhases > 1) {
+    el.instruction.textContent = `${evtPrefix}PHASE 1/${run.bomb.totalPhases} · ${run.bomb.challenge.text}`;
+  } else {
+    el.instruction.textContent = `${evtPrefix}${run.bomb.challenge.text}`;
+  }
+
   renderWires(run.bomb.wires);
   AudioManager.resetTickTracker();
   PowerManager.clearScanner();
   updatePowerUI();
-  later(() => { if (state === "PLAYING" && !PowerManager.isFrozen) setBombStatus("ARMED"); }, 180);
+
+  if (run.bomb.event) {
+    AudioManager.playEventCue(run.bomb.event.audioStyle);
+  }
+
+  later(() => { if (state === "PLAYING" && !PowerManager.isFrozen && !PowerManager.isSlowed) setBombStatus("ARMED"); }, 180);
   Timer.start(run.bomb.time, renderTimer, () => explode("TIME'S UP!"));
 }
 
@@ -4364,11 +7149,24 @@ function renderWires(wires) {
     const wireEl = document.createElement("button");
     wireEl.type = "button";
     wireEl.className = `wire wire-color-${wire.color}`;
+    if (wire.cut) wireEl.classList.add("cut", "phase-cut");
+    if (wire.hasWarningLed) wireEl.classList.add("has-warning-led");
     wireEl.dataset.index = String(wire.index);
     wireEl.style.animationDelay = `${wire.index * 0.03}s`;
     wireEl.setAttribute("aria-label", `Wire ${wire.index + 1}, ${wire.color.toUpperCase()}, position ${wire.index + 1} of ${wires.length}`);
+
+    let signalDotsHtml = "";
+    if (wire.signalNodes) {
+      signalDotsHtml = `<span class="wire-signal-dots">${'<span class="wire-node-dot"></span>'.repeat(wire.signalNodes)}</span>`;
+    }
+    let ledHtml = "";
+    if (wire.hasWarningLed) {
+      ledHtml = `<span class="wire-warning-led" aria-label="Warning LED"></span>`;
+    }
+
     wireEl.innerHTML = `
       <span class="wire-hit-area">
+        ${ledHtml}
         <span class="wire-cable" style="height:${Math.round(wire.length * 100)}%">
           <span class="wire-segment wire-top"></span>
           <span class="wire-spark-burst" aria-hidden="true"></span>
@@ -4377,6 +7175,7 @@ function renderWires(wires) {
             <span class="wire-tag">${wire.index + 1}</span>
           </span>
         </span>
+        ${signalDotsHtml}
       </span>
     `;
     wireEl.addEventListener("pointerdown", event => { event.preventDefault(); cutWire(wire.index, wireEl); }, { passive: false });
@@ -4387,6 +7186,8 @@ function renderWires(wires) {
 
 function cutWire(index, wireEl) {
   if (state !== "PLAYING" || run.inputLocked) return;
+  if (wireEl.classList.contains("cut") || run.bomb.wires[index]?.cut) return;
+
   // Compute spatial coordinates before mutating element classes to prevent layout thrashing
   const rect = wireEl.getBoundingClientRect();
   const stage = byId("bomb-stage")?.getBoundingClientRect() || { left: 0, top: 0 };
@@ -4396,10 +7197,41 @@ function cutWire(index, wireEl) {
   PowerManager.clearScanner();
   run.inputLocked = true;
   wireEl.classList.add("pressed", "cut");
+  run.bomb.wires[index].cut = true;
   AudioManager.playWireCut();
 
   if (index === run.bomb.challenge.answerIndex) {
-    defuse(wireEl, x, y);
+    if (run.bomb.currentPhaseIndex < run.bomb.totalPhases - 1) {
+      // Intermediate Phase Complete!
+      wireEl.classList.add("phase-cut", "correct-flash");
+      AudioManager.playPhaseComplete();
+      HapticsManager.cutSuccess();
+      showFloatingText(`PHASE ${run.bomb.currentPhaseIndex + 1} CLEAR!`, "var(--accent)");
+
+      if (el.bomb) {
+        el.bomb.classList.add("pcb-pulse-phase");
+        later(() => el.bomb?.classList.remove("pcb-pulse-phase"), 350);
+      }
+
+      if (run.bomb.event && run.bomb.event.id === "reconfiguration") {
+        AudioManager.playReconfiguration();
+      }
+
+      run.bomb.currentPhaseIndex += 1;
+      run.bomb.challenge = run.bomb.phases[run.bomb.currentPhaseIndex];
+
+      const evtPrefix = run.bomb.event ? `[${run.bomb.event.displayName}] ` : "";
+      el.instruction.textContent = `${evtPrefix}PHASE ${run.bomb.currentPhaseIndex + 1}/${run.bomb.totalPhases} · ${run.bomb.challenge.text}`;
+
+      later(() => {
+        if (state === "PLAYING") {
+          run.inputLocked = false;
+        }
+      }, 240);
+    } else {
+      // Final Phase Complete -> Defuse Bomb!
+      defuse(wireEl, x, y);
+    }
   } else if (PowerManager.hasActiveSecondChance()) {
     PowerManager.consumeSecondChance();
     if (run) run.powerUsedOnRun = true;
@@ -4454,12 +7286,54 @@ function defuse(wireEl, x, y) {
   AudioManager.playDefuseSuccess();
   HapticsManager.cutSuccess();
 
+  const remainingSeconds = Timer.remaining;
+
+  if (gameMode === "CAMPAIGN") {
+    const timeElapsed = Math.max(0.1, (run?.bomb?.time || 10.0) - remainingSeconds);
+    const powerUsed = Boolean(run?.powerUsedOnRun);
+
+    const ansWire = run.bomb.wires[run.bomb.challenge.answerIndex];
+    const wireColor = ansWire ? (WIRE_COLOR_MAP[ansWire.color] || "#00e5ff") : "#00e5ff";
+    createParticles(x, y, wireColor, 14, 74);
+    createParticles(x, y, "#f8ffff", 6, 46);
+    flashScreen("white");
+    showFloatingText("LEVEL COMPLETE!", "var(--accent)");
+
+    CampaignManager.completeLevel(campaignCurrentLevel || 1, {
+      completed: true,
+      secondsLeft: remainingSeconds,
+      timeElapsed: timeElapsed,
+      powerUsed: powerUsed
+    });
+    return;
+  }
+
   run.streak += 1;
   run.bestStreak = Math.max(run.bestStreak, run.streak);
   run.bombsDefused += 1;
-  run.totalTimeRemaining = (run.totalTimeRemaining || 0) + Timer.remaining;
+  run.totalTimeRemaining = (run.totalTimeRemaining || 0) + remainingSeconds;
 
-  const points = Scoring.award(run.bomb.challenge.type, Timer.remaining, run.streak);
+  let timeBankGained = 0;
+  if (gameMode === "NORMAL") {
+    const diffKey = run.difficulty || getEndlessDifficulty(run.bombNumber);
+    const carryoverRate = TimeBankCarryover[diffKey] !== undefined ? TimeBankCarryover[diffKey] : 1.0;
+    timeBankGained = Number(Math.min(EndlessTimerConfig.maxTimeBank, remainingSeconds * carryoverRate).toFixed(2));
+    run.timeBank = timeBankGained;
+  }
+
+  // Quick Defuse Bonus Check (< 35% time elapsed)
+  const timeUsed = run.bomb.time - remainingSeconds;
+  const isQuickDefuse = timeUsed < (run.bomb.time * 0.35);
+  const quickBonus = isQuickDefuse ? 50 : 0;
+
+  const phaseMultiplier = run.bomb.event
+    ? (run.bomb.event.scoreMultiplier || 1.75)
+    : (run.bomb.totalPhases === 3 ? 1.5 : (run.bomb.totalPhases === 2 ? 1.25 : 1.0));
+
+  let points = Scoring.award(run.bomb.challenge.type, remainingSeconds, run.streak, run.difficulty, phaseMultiplier);
+  if (isQuickDefuse) {
+    points += quickBonus;
+  }
   const coins = CoinManager.award(run.bomb.challenge.type, run.streak);
 
   run.score += points;
@@ -4472,6 +7346,12 @@ function defuse(wireEl, x, y) {
   createParticles(x, y, "#f8ffff", 6, 46);
   flashScreen("white");
   showFloatingText(`+${points}`);
+  if (isQuickDefuse) {
+    later(() => showFloatingText("QUICK DEFUSE! +50", "#00e5ff"), 180);
+  }
+  if (timeBankGained > 0) {
+    showTimeBankFeedback(timeBankGained);
+  }
   showCoinFeedback(coins);
   showStreakFeedback(run.streak);
   pulseHud();
@@ -4584,43 +7464,47 @@ function explode(reason, wireEl, x, y) {
 
   if (gameMode === "DAILY") {
     later(() => finishDailyChallenge(false, reason), 820);
+  } else if (gameMode === "CAMPAIGN") {
+    later(() => CampaignManager.failLevel(campaignCurrentLevel || 1, reason), 820);
   } else {
     later(() => endGame(reason), 820);
   }
 }
 
 function endGame(reason) {
+  const prevBest = profile.bestScore;
   profile.bestScore = Math.max(profile.bestScore, run.score);
   profile.bestStreak = Math.max(profile.bestStreak, run.bestStreak);
+  const isNewRecord = run.score > prevBest && prevBest > 0;
   
-  const { isNewRecord, recordText } = PersonalBestsManager.checkNormalRun(run);
+  const { recordText } = PersonalBestsManager.checkNormalRun(run);
 
   SaveManager.save(profile);
   refreshPersistentUI();
   el.resultTitle.textContent = `💥 ${reason}`;
-  el.resultMessage.textContent = run.bombsDefused ? "NICE RUN!" : "CUT SMARTER NEXT TIME!";
+  el.resultMessage.textContent = isNewRecord ? "🌟 NEW BEST SCORE ACHIEVED!" : (run.bombsDefused ? "GREAT RUN! DEFUSE SMARTER NEXT TIME!" : "CUT SMARTER NEXT TIME!");
   el.resultScore.textContent = run.score.toLocaleString();
   el.resultBest.textContent = profile.bestScore.toLocaleString();
   el.resultBombs.textContent = String(run.bombsDefused);
   el.resultStreak.textContent = String(run.bestStreak);
   el.resultCoinsEarned.textContent = `+${run.coinsEarned}`;
-  el.resultCurrentCoins.textContent = profile.coins.toLocaleString();
+  if (el.resultCurrentCoins) el.resultCurrentCoins.textContent = profile.coins.toLocaleString();
+  
+  if (el.resultDifficulty) {
+    const diffCfg = EndlessDifficultyConfig[run.difficulty || "easy"];
+    el.resultDifficulty.textContent = diffCfg ? diffCfg.label : "EASY";
+  }
 
   // Dynamic comparison message
   if (el.resultComparisonText) {
     if (isNewRecord) {
-      el.resultComparisonText.textContent = `🌟 ${recordText} (+${run.score.toLocaleString()} PTS)`;
+      el.resultComparisonText.textContent = `🌟 NEW ALL-TIME BEST! (+${run.score.toLocaleString()} PTS)`;
     } else if (run.score > profile.bestScore * 0.8 && profile.bestScore > 0) {
       const pct = Math.round((run.score / profile.bestScore) * 100);
       el.resultComparisonText.textContent = `🔥 SO CLOSE! ${pct}% OF YOUR ALL-TIME BEST!`;
     } else {
-      const nextM = MilestoneManager.getNextMilestone(run.bombsDefused);
-      if (nextM) {
-        const remainingBombs = nextM.count - run.bombsDefused;
-        el.resultComparisonText.textContent = `⚡ ${remainingBombs} MORE DEFUSAL${remainingBombs > 1 ? "S" : ""} TO NEXT MILESTONE (+${nextM.reward} ◆)`;
-      } else {
-        el.resultComparisonText.textContent = `👑 MASTER OPERATOR · LIFETIME BEST: ${profile.bestScore.toLocaleString()} PTS`;
-      }
+      const diffCfg = EndlessDifficultyConfig[run.difficulty || "easy"];
+      el.resultComparisonText.textContent = `🏆 SURVIVED ${run.bombsDefused} BOMBS · REACHED ${diffCfg?.label || "EASY"} · LIFETIME BEST: ${profile.bestScore.toLocaleString()} PTS`;
     }
   }
 
@@ -4769,44 +7653,97 @@ function updateDailyCardUI() {
 let lastRenderedTimerSec = null;
 let lastTimerAlertState = "";
 
-function renderTimer(remaining, total) {
+function renderTimer(remaining, duration) {
+  const total = duration || Timer.duration || run?.bomb?.time || 10.0;
   const formatted = remaining.toFixed(1);
   if (formatted !== lastRenderedTimerSec) {
     el.timerValue.textContent = formatted;
     lastRenderedTimerSec = formatted;
   }
-  const ratio = Math.max(0, Math.min(1, remaining / total));
+  const ratio = total > 0 ? Math.max(0, Math.min(1, remaining / total)) : 0;
   el.timerBarFill.style.transform = `scaleX(${ratio})`;
 
-  const alertState = remaining <= 1.5 ? "critical" : remaining <= 3.0 ? "danger" : remaining <= 5.0 ? "warning" : "normal";
+  // Unified Danger Calculation: Safe (70-100%), Warning (40-70%), Danger (15-40%), Critical (0-15%)
+  const pct = total > 0 ? (remaining / total) : 0;
+  let alertState = "safe";
+  let dangerVal = 0.0;
+  let defaultStatus = "ARMED";
+
+  if (pct <= 0.15 || remaining <= 1.5) {
+    alertState = "critical";
+    dangerVal = 1.0;
+    defaultStatus = "CRITICAL";
+  } else if (pct <= 0.40 || remaining <= 3.0) {
+    alertState = "danger";
+    dangerVal = 0.70;
+    defaultStatus = "DANGER";
+  } else if (pct <= 0.70 || remaining <= 5.0) {
+    alertState = "warning";
+    dangerVal = 0.35;
+    defaultStatus = "WARNING";
+  } else {
+    alertState = "safe";
+    dangerVal = 0.0;
+    defaultStatus = "ARMED";
+  }
+
+  // Update dynamic CSS custom properties on game screen for atmospheric reactivity
+  const phaseBonus = (run?.bomb?.currentPhaseIndex || 0) * 0.04;
+  const eventBonus = run?.bomb?.event ? 0.08 : 0;
+  const tension = calculateTension(remaining, total, run?.difficulty || "easy", run?.streak || 0, run?.bombNumber || 1, phaseBonus, eventBonus);
+  if (screens.game) {
+    screens.game.style.setProperty("--danger-level", String(dangerVal));
+    screens.game.style.setProperty("--tension-level", String(tension));
+  }
+
   if (alertState !== lastTimerAlertState) {
     lastTimerAlertState = alertState;
-    const warning = alertState === "warning";
-    const danger = alertState === "danger";
-    const critical = alertState === "critical";
+    const isSafe = alertState === "safe";
+    const isWarning = alertState === "warning";
+    const isDanger = alertState === "danger";
+    const isCritical = alertState === "critical";
 
-    el.timerWrap.classList.toggle("warning", warning);
-    el.timerWrap.classList.toggle("danger", danger);
-    el.timerWrap.classList.toggle("critical", critical);
-    el.timerValue.classList.toggle("urgent", danger);
-    el.timerValue.classList.toggle("critical", critical);
-    el.timerBarFill.classList.toggle("warn", warning);
-    el.timerBarFill.classList.toggle("danger", danger || critical);
+    if (screens.game) {
+      screens.game.classList.toggle("danger-safe", isSafe);
+      screens.game.classList.toggle("danger-warning", isWarning);
+      screens.game.classList.toggle("danger-danger", isDanger);
+      screens.game.classList.toggle("danger-critical", isCritical);
+    }
+
+    if (el.timerWrap) {
+      el.timerWrap.classList.toggle("safe", isSafe);
+      el.timerWrap.classList.toggle("warning", isWarning);
+      el.timerWrap.classList.toggle("danger", isDanger);
+      el.timerWrap.classList.toggle("critical", isCritical);
+    }
+    if (el.timerValue) {
+      el.timerValue.classList.toggle("urgent", isDanger);
+      el.timerValue.classList.toggle("critical", isCritical);
+    }
+    if (el.timerBarFill) {
+      el.timerBarFill.classList.toggle("warn", isWarning);
+      el.timerBarFill.classList.toggle("danger", isDanger || isCritical);
+      el.timerBarFill.classList.toggle("critical", isCritical);
+    }
+
+    if (state === "PLAYING" && !PowerManager.isFrozen && !PowerManager.isSlowed && !PowerManager.hasActiveSecondChance()) {
+      setBombStatus(defaultStatus);
+    }
   }
 
   if (remaining <= 5.0 && !PowerManager.isFrozen) {
-    AudioManager.playTimerTick(remaining);
+    AudioManager.playTimerTick(remaining, run?.difficulty || "easy", tension);
   }
 }
 
 function updateHud() {
-  el.hudScore.textContent = run.score.toLocaleString();
+  if (el.hudScore) el.hudScore.textContent = run.score.toLocaleString();
   const currentBest = gameMode === "DAILY" ? profile.bestDailyScore : profile.bestScore;
-  el.hudBest.textContent = Math.max(currentBest || 0, run.score).toLocaleString();
+  if (el.hudBest) el.hudBest.textContent = Math.max(currentBest || 0, run.score).toLocaleString();
   const bestLabel = byId("hud-best-label");
   if (bestLabel) bestLabel.textContent = gameMode === "DAILY" ? "DAILY BEST" : "BEST";
-  el.hudStreak.textContent = `🔥 ${run.streak}`;
-  el.hudCoins.textContent = profile.coins.toLocaleString();
+  if (el.hudStreak) el.hudStreak.textContent = `🔥 ${run.streak}`;
+  if (el.hudCoins) el.hudCoins.textContent = profile.coins.toLocaleString();
 }
 
 function updateSoundUI() {
@@ -4827,14 +7764,20 @@ function updatePowerUI() {
     const btn = byId(`btn-power-${id}`);
     const badge = byId(`badge-${id}`);
     const count = PowerManager.count(id);
+    const def = PowerDefinitions[id];
     if (badge) badge.textContent = String(count);
     if (btn) {
       btn.disabled = !isPlaying || count <= 0;
       btn.classList.toggle("is-disabled", !isPlaying || count <= 0);
-      if (id === "secondChance") {
-        btn.classList.toggle("is-active", PowerManager.hasActiveSecondChance());
-      } else if (id === "timeFreeze") {
-        btn.classList.toggle("is-active", PowerManager.isFrozen);
+      const isChanceActive = id === "secondChance" && PowerManager.hasActiveSecondChance();
+      const isFreezeActive = id === "timeFreeze" && PowerManager.isFrozen;
+      const isSlowActive = id === "timeSlow" && PowerManager.isSlowed;
+      btn.classList.toggle("is-active", isChanceActive || isFreezeActive || isSlowActive);
+
+      const countLabel = count > 0 ? `${count} available` : "0 (Depleted)";
+      if (def) {
+        btn.setAttribute("aria-label", `${def.name}: ${def.effect} · ${countLabel}`);
+        btn.setAttribute("title", `${def.name} [${count}] · ${def.effect}`);
       }
     }
   });
@@ -4852,9 +7795,9 @@ function refreshPersistentUI() {
   DailyChallengeManager.ensureDateSync();
   el.menuBestScore.textContent = profile.bestScore.toLocaleString();
   el.menuBestStreak.textContent = profile.bestStreak.toLocaleString();
-  el.menuCoins.textContent = profile.coins.toLocaleString();
+  if (el.menuCoins) el.menuCoins.textContent = profile.coins.toLocaleString();
   el.shopCoins.textContent = profile.coins.toLocaleString();
-  if (run) el.hudCoins.textContent = profile.coins.toLocaleString();
+  if (run && el.hudCoins) el.hudCoins.textContent = profile.coins.toLocaleString();
   updateDailyCardUI();
   updateSoundUI();
   updatePowerUI();
@@ -4893,6 +7836,24 @@ function showFloatingText(text, color) {
   if (color) node.style.color = color;
   el.feedbackLayer.appendChild(node);
   later(() => node.remove(), 900);
+}
+
+let timeBankFeedbackTimeout = null;
+function showTimeBankFeedback(seconds) {
+  if (el.hudTimeBank) {
+    if (timeBankFeedbackTimeout) {
+      clearTimeout(timeBankFeedbackTimeout);
+      timeBankFeedbackTimeout = null;
+    }
+    el.hudTimeBank.textContent = `+${seconds.toFixed(1)}s`;
+    el.hudTimeBank.style.display = "inline-flex";
+    timeBankFeedbackTimeout = setTimeout(() => {
+      if (el.hudTimeBank) {
+        el.hudTimeBank.style.display = "none";
+      }
+      timeBankFeedbackTimeout = null;
+    }, 1400);
+  }
 }
 
 function showCoinFeedback(coins) {
@@ -5007,6 +7968,11 @@ function returnToMenu() {
   clearPendingTransitions();
   Timer.stop();
   PowerManager.cleanup();
+  if (screens.game) {
+    screens.game.style.setProperty("--danger-level", "0");
+    screens.game.classList.remove("danger-warning", "danger-danger", "danger-critical");
+    screens.game.classList.add("danger-safe");
+  }
   if (el.dailyHudBanner) el.dailyHudBanner.style.display = "none";
   state = "MENU";
   refreshPersistentUI();
@@ -5074,13 +8040,25 @@ const TutorialManager = (() => {
   }, { passive: true });
 });
 
+function showEndlessBriefing() {
+  showScreen("endless-briefing");
+}
+
 byId("btn-play").addEventListener("click", () => {
-  if (!profile.tutorialCompleted) {
-    TutorialManager.start();
-  } else {
-    startGame();
-  }
+  showEndlessBriefing();
 });
+
+if (byId("btn-start-endless-run")) {
+  byId("btn-start-endless-run").addEventListener("click", () => {
+    startGame();
+  });
+}
+
+if (byId("btn-close-endless-briefing")) {
+  byId("btn-close-endless-briefing").addEventListener("click", () => {
+    returnToMenu();
+  });
+}
 
 if (byId("btn-tutorial-next")) byId("btn-tutorial-next").addEventListener("click", () => TutorialManager.next());
 if (byId("btn-tutorial-skip")) byId("btn-tutorial-skip").addEventListener("click", () => TutorialManager.complete());
@@ -5089,12 +8067,6 @@ if (byId("btn-daily-play")) byId("btn-daily-play").addEventListener("click", sta
 if (byId("btn-daily-play-normal")) byId("btn-daily-play-normal").addEventListener("click", startGame);
 if (byId("btn-daily-menu")) byId("btn-daily-menu").addEventListener("click", returnToMenu);
 
-if (byId("btn-achievements")) {
-  byId("btn-achievements").addEventListener("click", () => {
-    AchievementUI.render();
-    showScreen("achievements");
-  });
-}
 if (byId("btn-back-achievements")) {
   byId("btn-back-achievements").addEventListener("click", returnToMenu);
 }
@@ -5108,8 +8080,7 @@ if (el.achFilterPills) {
   });
 }
 
-byId("btn-shop").addEventListener("click", () => { ShopUI.render(); showScreen("shop"); showToast("SHOP READY", "neutral"); });
-byId("btn-back-shop").addEventListener("click", returnToMenu);
+if (byId("btn-back-shop")) byId("btn-back-shop").addEventListener("click", returnToMenu);
 byId("btn-reset-progress").addEventListener("click", () => showScreen("reset"));
 
 byId("btn-confirm-reset").addEventListener("click", () => {
@@ -5132,13 +8103,115 @@ byId("btn-pause").addEventListener("click", pauseGame);
 byId("btn-resume").addEventListener("click", resumeGame);
 byId("btn-restart-pause").addEventListener("click", () => {
   if (gameMode === "DAILY") startDailyChallenge();
+  else if (gameMode === "CAMPAIGN") CampaignManager.startLevel(campaignCurrentLevel || 1);
   else startGame();
 });
 byId("btn-menu-pause").addEventListener("click", returnToMenu);
 byId("btn-play-again").addEventListener("click", startGame);
 byId("btn-menu-result").addEventListener("click", returnToMenu);
 
-if (el.btnSoundMenu) el.btnSoundMenu.addEventListener("click", toggleSound);
+// Campaign event listeners
+if (byId("btn-campaign")) {
+  byId("btn-campaign").addEventListener("click", () => {
+    CampaignManager.openLevelSelect();
+  });
+}
+
+if (byId("btn-back-campaign-select")) {
+  byId("btn-back-campaign-select").addEventListener("click", () => {
+    returnToMenu();
+  });
+}
+
+if (byId("btn-play-level-1")) {
+  byId("btn-play-level-1").addEventListener("click", () => {
+    CampaignManager.openBriefing(1);
+  });
+}
+
+if (byId("btn-play-level-2")) {
+  byId("btn-play-level-2").addEventListener("click", () => {
+    if (profile.campaign?.unlockedLevels?.includes(2)) {
+      CampaignManager.openBriefing(2);
+    }
+  });
+}
+
+if (byId("btn-play-level-3")) {
+  byId("btn-play-level-3").addEventListener("click", () => {
+    if (profile.campaign?.unlockedLevels?.includes(3)) {
+      CampaignManager.openBriefing(3);
+    }
+  });
+}
+
+if (byId("btn-play-level-4")) {
+  byId("btn-play-level-4").addEventListener("click", () => {
+    if (profile.campaign?.unlockedLevels?.includes(4)) {
+      CampaignManager.openBriefing(4);
+    }
+  });
+}
+
+if (byId("btn-play-level-5")) {
+  byId("btn-play-level-5").addEventListener("click", () => {
+    if (profile.campaign?.unlockedLevels?.includes(5)) {
+      CampaignManager.openBriefing(5);
+    }
+  });
+}
+
+if (byId("btn-play-level-6")) {
+  byId("btn-play-level-6").addEventListener("click", () => {
+    if (profile.campaign?.unlockedLevels?.includes(6)) {
+      CampaignManager.openBriefing(6);
+    }
+  });
+}
+
+if (byId("btn-play-level-7")) {
+  byId("btn-play-level-7").addEventListener("click", () => {
+    if (profile.campaign?.unlockedLevels?.includes(7)) {
+      CampaignManager.openBriefing(7);
+    }
+  });
+}
+
+if (byId("btn-close-campaign-briefing")) {
+  byId("btn-close-campaign-briefing").addEventListener("click", () => {
+    CampaignManager.openLevelSelect();
+  });
+}
+
+if (byId("btn-start-campaign-level")) {
+  byId("btn-start-campaign-level").addEventListener("click", () => {
+    CampaignManager.startLevel(campaignCurrentLevel || 1);
+  });
+}
+
+if (byId("btn-campaign-next-level")) {
+  byId("btn-campaign-next-level").addEventListener("click", () => {
+    const nextLevel = (campaignCurrentLevel || 1) + 1;
+    if (CampaignConfig.levels[nextLevel] && profile.campaign?.unlockedLevels?.includes(nextLevel)) {
+      CampaignManager.openBriefing(nextLevel);
+    } else {
+      CampaignManager.openLevelSelect();
+    }
+  });
+}
+
+if (byId("btn-campaign-replay")) {
+  byId("btn-campaign-replay").addEventListener("click", () => {
+    CampaignManager.startLevel(campaignCurrentLevel || 1);
+  });
+}
+
+if (byId("btn-campaign-level-select")) {
+  byId("btn-campaign-level-select").addEventListener("click", () => {
+    CampaignManager.openLevelSelect();
+  });
+}
+
 if (el.btnSoundPause) el.btnSoundPause.addEventListener("click", toggleSound);
 
 // Power bar event handlers
@@ -5183,17 +8256,25 @@ document.addEventListener("keydown", event => {
         break;
       case "delete-account":
       case "logout-confirm":
-        SettingsUI.render();
+        AccountSettingsUI.render();
         showScreen("account-settings");
         break;
       case "account-settings":
         ProfileUI.render();
         showScreen("profile");
         break;
+      case "settings":
+        returnToMenu();
+        break;
       case "register":
       case "forgot-password":
         showScreen("login");
         break;
+      case "campaign-briefing":
+        CampaignManager.openLevelSelect();
+        break;
+      case "campaign-select":
+      case "campaign-result":
       case "profile":
       case "login":
       case "stats":
@@ -5247,12 +8328,6 @@ if (byId("btn-install")) {
 }
 
 // Phase 8: Stats, Goals, Login Rewards, Share Event Handlers
-if (byId("btn-stats")) {
-  byId("btn-stats").addEventListener("click", () => {
-    StatsManager.renderStats();
-    showScreen("stats");
-  });
-}
 if (byId("btn-back-stats")) {
   byId("btn-back-stats").addEventListener("click", returnToMenu);
 }
@@ -5261,6 +8336,12 @@ if (byId("btn-daily-goals")) {
   byId("btn-daily-goals").addEventListener("click", () => {
     DailyGoalsManager.render();
     showScreen("daily-goals");
+  });
+}
+if (byId("btn-shop")) {
+  byId("btn-shop").addEventListener("click", () => {
+    ShopUI.render();
+    showScreen("shop");
   });
 }
 if (byId("btn-back-daily-goals")) {
@@ -5294,6 +8375,8 @@ if (byId("btn-daily-share")) {
 }
 
 // Phase 8 & 10: Player Accounts, Profile & Settings Event Handlers
+let lastScreenBeforeSettings = "menu";
+
 function toggleAccountPopup(e) {
   if (e) {
     e.stopPropagation();
@@ -5316,12 +8399,50 @@ if (el.btnMenuAvatar) {
   el.btnMenuAvatar.addEventListener("click", toggleAccountPopup);
 }
 
+if (el.btnPopupProfile) {
+  el.btnPopupProfile.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeAccountPopup();
+    ProfileUI.render();
+    showScreen("profile");
+  });
+}
+
+if (el.btnPopupStats) {
+  el.btnPopupStats.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeAccountPopup();
+    StatsManager.renderStats();
+    showScreen("stats");
+  });
+}
+
+if (el.btnPopupAchievements) {
+  el.btnPopupAchievements.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeAccountPopup();
+    AchievementUI.render();
+    showScreen("achievements");
+  });
+}
+
 if (el.btnPopupSettings) {
   el.btnPopupSettings.addEventListener("click", (e) => {
     e.stopPropagation();
     closeAccountPopup();
-    ProfileUI.render();
-    showScreen("account-settings");
+    lastScreenBeforeSettings = "menu";
+    GameSettingsUI.render();
+    showScreen("settings");
+  });
+}
+
+if (el.btnPopupGuestSettings) {
+  el.btnPopupGuestSettings.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeAccountPopup();
+    lastScreenBeforeSettings = "menu";
+    GameSettingsUI.render();
+    showScreen("settings");
   });
 }
 
@@ -5686,7 +8807,7 @@ if (byId("btn-profile-create-account")) {
 
 if (byId("btn-profile-settings")) {
   byId("btn-profile-settings").addEventListener("click", () => {
-    SettingsUI.render();
+    AccountSettingsUI.render();
     showScreen("account-settings");
   });
 }
@@ -5701,7 +8822,7 @@ if (byId("btn-settings-change-name")) {
     if (newName !== null) {
       const res = AuthManager.setDisplayName(newName);
       if (res.valid) {
-        SettingsUI.render();
+        AccountSettingsUI.render();
         showToast(`NAME CHANGED TO ${res.name}`, "success");
       } else {
         showToast(res.error || "INVALID DISPLAY NAME", "danger");
@@ -5721,7 +8842,7 @@ if (byId("btn-toggle-analytics")) {
   byId("btn-toggle-analytics").addEventListener("click", () => {
     const current = Boolean(profile.privacy?.analytics);
     ConsentManager.setConsent("analytics", !current);
-    SettingsUI.render();
+    AccountSettingsUI.render();
     showToast(`ANALYTICS ${!current ? "ENABLED" : "DISABLED"}`, "neutral");
   });
 }
@@ -5730,7 +8851,7 @@ if (byId("btn-toggle-ads")) {
   byId("btn-toggle-ads").addEventListener("click", () => {
     const current = Boolean(profile.privacy?.personalizedAds);
     ConsentManager.setConsent("personalizedAds", !current);
-    SettingsUI.render();
+    AccountSettingsUI.render();
     showToast(`PERSONALIZED ADS ${!current ? "ENABLED" : "DISABLED"}`, "neutral");
   });
 }
@@ -5738,7 +8859,16 @@ if (byId("btn-toggle-ads")) {
 if (byId("btn-settings-toggle-sound")) {
   byId("btn-settings-toggle-sound").addEventListener("click", () => {
     toggleSound();
-    SettingsUI.render();
+    GameSettingsUI.render();
+  });
+}
+
+if (byId("btn-settings-toggle-haptics")) {
+  byId("btn-settings-toggle-haptics").addEventListener("click", () => {
+    profile.hapticsEnabled = !(profile.hapticsEnabled !== false);
+    SaveManager.save(profile);
+    GameSettingsUI.render();
+    showToast(`HAPTICS ${profile.hapticsEnabled ? "ENABLED" : "DISABLED"}`, "neutral");
   });
 }
 
@@ -5746,7 +8876,9 @@ if (byId("btn-settings-toggle-motion")) {
   byId("btn-settings-toggle-motion").addEventListener("click", () => {
     const body = document.body;
     const isReduced = body.classList.toggle("reduced-motion-override");
-    SettingsUI.render();
+    profile.reducedMotion = isReduced;
+    SaveManager.save(profile);
+    GameSettingsUI.render();
     showToast(`REDUCED MOTION ${isReduced ? "ENABLED" : "DISABLED"}`, "neutral");
   });
 }
@@ -5807,6 +8939,12 @@ if (byId("btn-cancel-delete-account")) {
 
 if (byId("btn-back-settings")) {
   byId("btn-back-settings").addEventListener("click", () => {
+    returnToMenu();
+  });
+}
+
+if (byId("btn-back-account-settings")) {
+  byId("btn-back-account-settings").addEventListener("click", () => {
     ProfileUI.render();
     showScreen("profile");
   });
@@ -5834,6 +8972,10 @@ if (typeof window !== "undefined" && "serviceWorker" in navigator) {
       console.warn("[SW] Registration skipped or failed:", err);
     });
   });
+}
+
+if (profile.reducedMotion) {
+  document.body.classList.add("reduced-motion-override");
 }
 
 AuthManager.initialize();

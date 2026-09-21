@@ -38,9 +38,13 @@
   <!-- ================= MENU SCREEN ================= -->
   <section id="screen-menu" class="screen active" aria-labelledby="menu-title">
     <div class="menu-inner">
-      <!-- Top Bar with Circular Account Avatar -->
+      <!-- Top Bar with Coins (Top-Left) and Circular Account Avatar (Top-Right) -->
       <div class="menu-top-bar" role="region" aria-label="Player account">
-        <div class="menu-top-spacer"></div>
+        <div class="menu-coin-pill" id="menu-coin-pill" aria-label="Coins balance">
+          <span class="coin-icon" aria-hidden="true">◆</span>
+          <span class="menu-coins-val" id="menu-coins">0</span>
+          <span class="menu-coin-label">COINS</span>
+        </div>
         <div class="menu-account-anchor">
           <button id="btn-menu-avatar" class="menu-avatar-btn" type="button" aria-label="Account Menu" aria-haspopup="dialog" aria-expanded="false">
             <span class="menu-avatar-circle" id="menu-avatar-icon" aria-hidden="true">💣</span>
@@ -52,8 +56,8 @@
               <div class="account-popup-avatar-circle" id="popup-avatar-icon" aria-hidden="true">💣</div>
               <div class="account-popup-info">
                 <div class="account-popup-name" id="popup-display-name">Guest</div>
-                <div class="account-popup-email" id="popup-email">GUEST</div>
-                <div class="account-popup-status" id="popup-status">
+                <div class="account-popup-email" id="popup-email">GUEST • LOCAL</div>
+                <div class="account-popup-status" id="popup-status" style="display: none;">
                   <span class="status-dot" id="popup-status-dot" aria-hidden="true">●</span>
                   <span id="popup-status-text">ONLINE</span>
                 </div>
@@ -61,11 +65,16 @@
             </div>
             <div class="account-popup-divider"></div>
             <div class="account-popup-actions" id="popup-auth-actions" style="display: none;">
-              <button id="btn-popup-settings" class="btn btn-secondary btn-popup-action" type="button">ACCOUNT SETTINGS</button>
+              <button id="btn-popup-profile" class="btn btn-secondary btn-popup-action" type="button">PROFILE</button>
+              <button id="btn-popup-stats" class="btn btn-secondary btn-popup-action" type="button">CAREER STATS</button>
+              <button id="btn-popup-achievements" class="btn btn-secondary btn-popup-action" type="button">ACHIEVEMENTS</button>
+              <button id="btn-popup-settings" class="btn btn-secondary btn-popup-action" type="button">SETTINGS</button>
+              <div class="account-popup-divider"></div>
               <button id="btn-popup-logout" class="btn btn-ghost btn-popup-action text-danger" type="button">LOG OUT</button>
             </div>
             <div class="account-popup-actions" id="popup-guest-actions">
               <button id="btn-popup-signin" class="btn btn-primary btn-popup-action" type="button">SIGN IN / CREATE ACCOUNT</button>
+              <button id="btn-popup-guest-settings" class="btn btn-secondary btn-popup-action" type="button">SETTINGS</button>
             </div>
           </div>
         </div>
@@ -76,9 +85,10 @@
       </div>
 
       <h1 class="title" id="menu-title">💣 BOMB DEFUSE</h1>
-      <p class="subtitle">READ THE RULE. CUT THE RIGHT WIRE. DON'T EXPLODE.</p>
+      <p class="subtitle">DEFUSE. ADAPT. SURVIVE.</p>
 
-      <button id="btn-play" class="btn btn-primary" aria-label="Start Game">PLAY AS GUEST</button>
+      <button id="btn-campaign" class="btn btn-primary" aria-label="Play Campaign Mode">CAMPAIGN</button>
+      <button id="btn-play" class="btn btn-secondary" aria-label="Start Endless Run">ENDLESS RUN</button>
 
       <!-- Daily Challenge Card -->
       <div class="daily-card" id="daily-card" role="region" aria-label="Daily challenge">
@@ -101,30 +111,14 @@
         </div>
       </div>
 
-      <div class="menu-action-grid">
-        <button id="btn-daily-goals" class="btn btn-secondary btn-with-badge" aria-label="View Daily Goals">
-          <span>DAILY GOALS</span>
-          <span class="ach-badge goals-badge" id="menu-goals-badge">3</span>
-        </button>
-        <button id="btn-achievements" class="btn btn-secondary btn-with-badge" aria-label="View Achievements">
-          <span>ACHIEVEMENTS</span>
-          <span class="ach-badge ach-pill-badge ach-circle-badge" id="menu-achievements-badge"><span class="ach-badge-val">0</span><span class="ach-badge-total">/23</span></span>
-        </button>
-      </div>
+      <button id="btn-daily-goals" class="btn btn-secondary btn-daily-goals-menu" aria-label="View Daily Goals">
+        <span>DAILY GOALS</span>
+        <span class="ach-badge goals-badge" id="menu-goals-badge">0 / 3</span>
+      </button>
 
-      <div class="menu-action-grid">
-        <button id="btn-stats" class="btn btn-secondary" aria-label="View Career Statistics">CAREER STATS</button>
-        <button id="btn-shop" class="btn btn-secondary" aria-label="Open Shop">SHOP</button>
-      </div>
+      <button id="btn-shop" class="btn btn-secondary btn-shop-menu" aria-label="Open Shop">SHOP</button>
 
-      <button id="btn-sound-menu" class="btn btn-ghost sound-btn" aria-label="Toggle Sound Effects">🔊 SOUND ON</button>
       <button id="btn-install" class="btn btn-ghost install-btn" style="display: none;" aria-label="Install Bomb Defuse as an App">⬇ INSTALL APP</button>
-
-      <div class="coin-balance menu-coin-balance" aria-label="Current coins balance">
-        <span class="coin-icon" aria-hidden="true">◆</span>
-        <span id="menu-coins">0</span>
-        <span class="coin-label">COINS</span>
-      </div>
 
       <div class="stat-row">
         <div class="stat-box">
@@ -200,6 +194,57 @@
     </div>
   </section>
 
+  <!-- ================= ENDLESS MODE BRIEFING MODAL ================= -->
+  <section id="screen-endless-briefing" class="screen overlay-screen" aria-labelledby="endless-briefing-title" role="dialog" aria-modal="true">
+    <div class="panel endless-briefing-panel">
+      <div class="briefing-header">
+        <span class="briefing-badge">ENDLESS PROTOCOL</span>
+        <h2 id="endless-briefing-title" class="briefing-title">MISSION BRIEFING</h2>
+      </div>
+      <div class="briefing-rules-list">
+        <div class="briefing-rule-item">
+          <span class="briefing-rule-icon" aria-hidden="true">⏱</span>
+          <div class="briefing-rule-text">
+            <strong>TIERED FAST COUNTDOWN</strong>
+            <span>Countdown begins at 8.0s and tightens down to 3.5s as you advance.</span>
+          </div>
+        </div>
+        <div class="briefing-rule-item">
+          <span class="briefing-rule-icon" aria-hidden="true">⏳</span>
+          <div class="briefing-rule-text">
+            <strong>TIME BANK (UP TO +6.0s)</strong>
+            <span>Unused seconds carry over to start your next bomb (up to +6.0s max).</span>
+          </div>
+        </div>
+        <div class="briefing-rule-item">
+          <span class="briefing-rule-icon" aria-hidden="true">⚡</span>
+          <div class="briefing-rule-text">
+            <strong>QUICK DEFUSE BONUS</strong>
+            <span>Defuse in under 35% time for a +50 QUICK DEFUSE speed bonus!</span>
+          </div>
+        </div>
+        <div class="briefing-rule-item">
+          <span class="briefing-rule-icon" aria-hidden="true">📈</span>
+          <div class="briefing-rule-text">
+            <strong>ESCALATING COGNITIVE RULES</strong>
+            <span>EASY → NORMAL → HARD → VERY HARD → EXTREME+</span>
+          </div>
+        </div>
+        <div class="briefing-rule-item">
+          <span class="briefing-rule-icon" aria-hidden="true">🔥</span>
+          <div class="briefing-rule-text">
+            <strong>STREAK MULTIPLIER</strong>
+            <span>Chain defusals without errors to multiply your score up to x3.0.</span>
+          </div>
+        </div>
+      </div>
+      <div class="briefing-actions">
+        <button id="btn-start-endless-run" class="btn btn-primary" aria-label="Start Endless Run Now">START RUN</button>
+        <button id="btn-close-endless-briefing" class="btn btn-ghost" aria-label="Back to main menu">BACK</button>
+      </div>
+    </div>
+  </section>
+
   <!-- ================= GAME SCREEN ================= -->
   <section id="screen-game" class="screen" aria-label="Active Bomb Defusal">
     <!-- Daily Challenge Banner (visible only during daily mode) -->
@@ -220,26 +265,30 @@
       <div class="daily-hud-step" id="daily-hud-step">1 / 7</div>
     </div>
 
-    <div class="hud" role="region" aria-label="Game heads up display">
-      <div class="hud-item hud-left">
-        <span class="hud-label" id="hud-score-label">SCORE</span>
-        <span class="hud-value" id="hud-score">0</span>
+    <!-- Top Gameplay Header Bar with Dedicated Collision-Free Pause Slot -->
+    <div class="game-top-bar" role="region" aria-label="Game top status bar">
+      <div class="hud" role="region" aria-label="Game heads up display">
+        <div class="hud-item hud-left">
+          <span class="hud-label" id="hud-score-label">SCORE</span>
+          <span class="hud-value" id="hud-score">0</span>
+        </div>
+        <div class="hud-item hud-center">
+          <span class="hud-label" id="hud-bomb-label">BOMB 1</span>
+          <span class="hud-streak" id="hud-streak" aria-label="Current streak">🔥 0</span>
+        </div>
+        <div class="hud-item hud-right">
+          <span class="hud-label" id="hud-best-label">BEST</span>
+          <span class="hud-value" id="hud-best">0</span>
+        </div>
       </div>
-      <div class="hud-item hud-center">
-        <span class="hud-label" id="hud-bomb-label">BOMB 1</span>
-        <span class="hud-streak" id="hud-streak" aria-label="Current streak">🔥 0</span>
-      </div>
-      <div class="hud-item hud-right">
-        <span class="hud-label" id="hud-best-label">BEST</span>
-        <span class="hud-value" id="hud-best">0</span>
-        <span class="hud-coins" aria-label="Coins balance"><span class="coin-icon" aria-hidden="true">◆</span> <span id="hud-coins">0</span></span>
-      </div>
+      <button id="btn-pause" class="icon-btn header-pause-btn" aria-label="Pause game" title="Pause">❚❚</button>
     </div>
 
-    <button id="btn-pause" class="icon-btn" aria-label="Pause game" title="Pause">❚❚</button>
-
     <div class="timer-wrap" role="timer" aria-live="off">
-      <div class="timer-value" id="timer-value">10.0</div>
+      <div class="timer-display-row">
+        <div class="timer-value" id="timer-value">10.0</div>
+        <span class="time-bank-badge" id="hud-time-bank" style="display: none;" aria-label="Time bank reserve">+0.0s</span>
+      </div>
       <div class="timer-bar-track">
         <div class="timer-bar-fill" id="timer-bar-fill"></div>
       </div>
@@ -247,43 +296,177 @@
 
     <div class="instruction" id="instruction" role="alert" aria-live="assertive">CUT THE BLUE WIRE</div>
 
-    <div class="power-bar" id="power-bar" role="toolbar" aria-label="Active powers">
-      <button id="btn-power-scanner" class="power-btn" data-power="scanner" type="button" aria-label="Scanner power: Reveals 1 wrong wire">
-        <span class="power-icon" aria-hidden="true">🔍</span>
-        <span class="power-label">SCAN</span>
-        <span class="power-badge" id="badge-scanner">0</span>
-      </button>
-      <button id="btn-power-timeFreeze" class="power-btn" data-power="timeFreeze" type="button" aria-label="Time Freeze power: Freezes timer for 3 seconds">
-        <span class="power-icon" aria-hidden="true">❄</span>
-        <span class="power-label">FREEZE</span>
-        <span class="power-badge" id="badge-timeFreeze">0</span>
-      </button>
-      <button id="btn-power-secondChance" class="power-btn" data-power="secondChance" type="button" aria-label="Second Chance power: Protects against 1 wrong cut">
-        <span class="power-icon" aria-hidden="true">🛡</span>
-        <span class="power-label">CHANCE</span>
-        <span class="power-badge" id="badge-secondChance">0</span>
-      </button>
-    </div>
-
-    <div class="bomb-stage" id="bomb-stage">
-      <div class="bomb" id="bomb" data-status="armed">
-        <div class="bomb-rim" aria-hidden="true"></div>
-        <div class="bomb-panel-line bomb-panel-line-a" aria-hidden="true"></div>
-        <div class="bomb-panel-line bomb-panel-line-b" aria-hidden="true"></div>
-        <div class="bomb-led" id="bomb-led" aria-hidden="true"></div>
-        <div class="bomb-status-led" aria-hidden="true"></div>
-        <div class="bomb-screen">
-          <span id="bomb-screen-text">ARMED</span>
+    <!-- Main Combat Stage: Bomb Module flanked by Left & Right Circular Power Controls -->
+    <div class="game-stage-layout" id="power-bar" role="toolbar" aria-label="Gameplay stage and powers">
+      <!-- Flank Left Powers: Scanner & Time Slow -->
+      <div class="power-flank power-flank-left" aria-label="Scanner and Time Slow power controls">
+        <div class="power-control-pod">
+          <button id="btn-power-scanner" class="power-btn power-btn-circle" data-power="scanner" type="button" aria-label="Scanner: Reveals 1 wrong wire (0 available)" title="Scanner: Reveals 1 wrong wire">
+            <span class="power-icon-wrap" aria-hidden="true">
+              <svg class="power-svg-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9.5"></circle>
+                <circle cx="12" cy="12" r="4.5"></circle>
+                <line x1="12" y1="2.5" x2="12" y2="12"></line>
+                <line x1="12" y1="12" x2="19" y2="19"></line>
+              </svg>
+            </span>
+            <span class="power-badge" id="badge-scanner">0</span>
+          </button>
+          <span class="power-hint-label">SCAN</span>
         </div>
-        <div class="bomb-screw bomb-screw-tl" aria-hidden="true"></div>
-        <div class="bomb-screw bomb-screw-tr" aria-hidden="true"></div>
-        <div class="bomb-screw bomb-screw-bl" aria-hidden="true"></div>
-        <div class="bomb-screw bomb-screw-br" aria-hidden="true"></div>
-        <div class="bomb-warning" aria-hidden="true">⚠</div>
-        <div class="bomb-circuit bomb-circuit-left" aria-hidden="true"></div>
-        <div class="bomb-circuit bomb-circuit-right" aria-hidden="true"></div>
-        <div class="bomb-danger-label" aria-hidden="true">DANGER</div>
-        <div class="wires" id="wires-container" role="group" aria-label="Bomb wire assembly"></div>
+
+        <div class="power-control-pod">
+          <button id="btn-power-timeSlow" class="power-btn power-btn-circle" data-power="timeSlow" type="button" aria-label="Time Slow: Reduces timer speed by 50% for 5s (0 available)" title="Time Slow: Reduces timer speed by 50% for 5s">
+            <span class="power-icon-wrap" aria-hidden="true">
+              <svg class="power-svg-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="9.5"></circle>
+                <polyline points="12 6 12 12 8 14"></polyline>
+                <path d="M4 14l-2 2"></path>
+                <path d="M20 14l2 2"></path>
+              </svg>
+            </span>
+            <span class="power-badge" id="badge-timeSlow">0</span>
+          </button>
+          <span class="power-hint-label">SLOW</span>
+        </div>
+      </div>
+
+      <!-- Center Bomb Device Stage (High-Tech Electronic Motherboard Module) -->
+      <div class="bomb-stage" id="bomb-stage">
+        <div class="bomb" id="bomb" data-status="armed">
+          <!-- Reinforced Metallic Chassis & Industrial Fasteners -->
+          <div class="bomb-chassis-bezel" aria-hidden="true"></div>
+          <div class="bomb-screw bomb-screw-tl" aria-hidden="true"></div>
+          <div class="bomb-screw bomb-screw-tr" aria-hidden="true"></div>
+          <div class="bomb-screw bomb-screw-bl" aria-hidden="true"></div>
+          <div class="bomb-screw bomb-screw-br" aria-hidden="true"></div>
+
+          <!-- Motherboard PCB Substrate & Electric Flow Traces -->
+          <div class="bomb-pcb-layer" aria-hidden="true">
+            <div class="pcb-trace pcb-trace-tl"></div>
+            <div class="pcb-trace pcb-trace-tr"></div>
+            <div class="pcb-trace pcb-trace-bl"></div>
+            <div class="pcb-trace pcb-trace-br"></div>
+            <div class="pcb-node pcb-node-1"></div>
+            <div class="pcb-node pcb-node-2"></div>
+            <div class="pcb-node pcb-node-3"></div>
+            <div class="pcb-node pcb-node-4"></div>
+          </div>
+
+          <!-- Upper Section: Electronic Core & Status Chamber -->
+          <div class="bomb-core-chamber">
+            <div class="bomb-core-header">
+              <div class="bomb-status-led-group">
+                <span class="bomb-led" id="bomb-led" aria-hidden="true"></span>
+                <span class="bomb-status-led" aria-hidden="true"></span>
+                <span class="bomb-sys-code" aria-hidden="true">SYS // 01</span>
+              </div>
+              <div class="bomb-warning-badge" aria-hidden="true">
+                <span class="bomb-warning-icon">▲</span>
+                <span class="bomb-warning-text">DEFUSE CORE</span>
+              </div>
+            </div>
+
+            <div class="bomb-core-screen-wrap">
+              <div class="bomb-screen">
+                <span id="bomb-screen-text">ARMED</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Terminal Interface Header -->
+          <div class="bomb-terminal-bar" aria-hidden="true">
+            <span class="terminal-label">BUS-A // TERMINAL ARRAY</span>
+            <div class="terminal-status-dots">
+              <span class="t-dot t-dot-1"></span>
+              <span class="t-dot t-dot-2"></span>
+              <span class="t-dot t-dot-3"></span>
+            </div>
+          </div>
+
+          <!-- Three / Stage Wires Assembly (Major Gameplay Focus) -->
+          <div class="wires" id="wires-container" role="group" aria-label="Bomb wire assembly"></div>
+
+          <!-- Free Flow Circuit Board Assembly (Level 4+ / Circuit Flow) -->
+          <div class="circuit-flow-container" id="circuit-flow-container" style="display: none;" role="region" aria-label="Circuit flow routing puzzle">
+            <div class="circuit-flow-board" id="circuit-flow-board">
+              <svg class="circuit-flow-svg" id="circuit-flow-svg" aria-hidden="true"></svg>
+              <div class="circuit-flow-grid" id="circuit-flow-grid"></div>
+            </div>
+            <div class="circuit-flow-status-bar">
+              <span class="circuit-status-chip" id="circuit-progress-chip">0 / 3 CIRCUITS RESTORED</span>
+            </div>
+          </div>
+
+          <!-- Signal Memory Board Assembly (Level 5 / Signal Trace) -->
+          <div class="signal-memory-container" id="signal-memory-container" style="display: none;" role="region" aria-label="Signal memory pattern board">
+            <div class="signal-memory-board" id="signal-memory-board">
+              <div class="signal-memory-grid" id="signal-memory-grid"></div>
+            </div>
+            <div class="signal-memory-status-bar">
+              <span class="signal-status-chip" id="signal-progress-chip">SEQUENCE 0 / 4</span>
+            </div>
+          </div>
+
+          <!-- Word Puzzle Assembly (Level 7 / Code Word) -->
+          <div class="word-puzzle-container" id="word-puzzle-container" style="display: none;" role="region" aria-label="Word puzzle decryption console">
+            <div class="word-puzzle-board" id="word-puzzle-board">
+              <div class="word-puzzle-header">
+                <span class="word-puzzle-status" id="word-puzzle-status">CODE INPUT</span>
+                <span class="word-puzzle-chip" id="word-puzzle-chip">5 LETTERS</span>
+              </div>
+              <div class="word-answer-row" id="word-answer-row" role="region" aria-label="Current answer code">
+                <div class="word-slot" data-index="0" id="word-slot-0"><span class="word-slot-char">_</span></div>
+                <div class="word-slot" data-index="1" id="word-slot-1"><span class="word-slot-char">_</span></div>
+                <div class="word-slot" data-index="2" id="word-slot-2"><span class="word-slot-char">_</span></div>
+                <div class="word-slot" data-index="3" id="word-slot-3"><span class="word-slot-char">_</span></div>
+                <div class="word-slot" data-index="4" id="word-slot-4"><span class="word-slot-char">_</span></div>
+              </div>
+              <div class="word-tiles-grid" id="word-tiles-grid" role="group" aria-label="Scrambled letter tiles">
+                <!-- Generated dynamically by WordPuzzleManager: A, L, Y, R, E -->
+              </div>
+              <div class="word-controls-row">
+                <button id="btn-word-clear" class="btn btn-secondary btn-word-ctrl" type="button" aria-label="Clear entered code letters">CLEAR</button>
+                <button id="btn-word-submit" class="btn btn-primary btn-word-ctrl" type="button" disabled aria-disabled="true" aria-label="Submit code word">SUBMIT</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Grounding Plate -->
+          <div class="bomb-terminal-ground" aria-hidden="true"></div>
+        </div>
+      </div>
+
+      <!-- Flank Right Powers: Time Freeze & Second Chance -->
+      <div class="power-flank power-flank-right" aria-label="Freeze and Shield power controls">
+        <div class="power-control-pod">
+          <button id="btn-power-timeFreeze" class="power-btn power-btn-circle" data-power="timeFreeze" type="button" aria-label="Time Freeze: Freezes countdown for 3s (0 available)" title="Time Freeze: Freezes countdown for 3s">
+            <span class="power-icon-wrap" aria-hidden="true">
+              <svg class="power-svg-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="2" x2="12" y2="22"></line>
+                <line x1="2" y1="12" x2="22" y2="12"></line>
+                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+                <line x1="19.07" y1="4.93" x2="4.93" y2="19.07"></line>
+                <circle cx="12" cy="12" r="2.5" fill="currentColor"></circle>
+              </svg>
+            </span>
+            <span class="power-badge" id="badge-timeFreeze">0</span>
+          </button>
+          <span class="power-hint-label">FREEZE</span>
+        </div>
+
+        <div class="power-control-pod">
+          <button id="btn-power-secondChance" class="power-btn power-btn-circle" data-power="secondChance" type="button" aria-label="Second Chance: Protects against 1 wrong cut (0 available)" title="Second Chance: Protects against 1 wrong cut">
+            <span class="power-icon-wrap" aria-hidden="true">
+              <svg class="power-svg-icon" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                <circle cx="12" cy="11" r="2.5" fill="currentColor"></circle>
+              </svg>
+            </span>
+            <span class="power-badge" id="badge-secondChance">0</span>
+          </button>
+          <span class="power-hint-label">SHIELD</span>
+        </div>
       </div>
     </div>
 
@@ -336,11 +519,15 @@
           <span class="stat-label">BEST STREAK</span>
           <span class="stat-value" id="result-streak">0</span>
         </div>
+        <div class="stat-box">
+          <span class="stat-label">DIFFICULTY</span>
+          <span class="stat-value" id="result-difficulty">EASY</span>
+        </div>
         <div class="stat-box coin-stat">
           <span class="stat-label">COINS EARNED</span>
           <span class="stat-value" id="result-coins-earned">+0</span>
         </div>
-        <div class="stat-box coin-stat">
+        <div class="stat-box coin-stat" style="display: none;">
           <span class="stat-label">CURRENT COINS</span>
           <span class="stat-value" id="result-current-coins">0</span>
         </div>
@@ -395,6 +582,233 @@
         <button id="btn-daily-share" class="btn btn-secondary btn-share" aria-label="Share daily challenge score">📤 SHARE SCORE</button>
       </div>
       <button id="btn-daily-menu" class="btn btn-ghost">MENU</button>
+    </div>
+  </section>
+
+  <!-- ================= CAMPAIGN LEVEL SELECT SCREEN ================= -->
+  <section id="screen-campaign-select" class="screen" aria-labelledby="campaign-select-title">
+    <div class="menu-inner campaign-select-inner">
+      <div class="campaign-header-wrap">
+        <span class="chapter-badge">CHAPTER 1</span>
+        <h1 class="title campaign-chapter-title" id="campaign-select-title">FIRST PROTOCOL</h1>
+        <p class="subtitle campaign-chapter-subtitle">FUNDAMENTAL DEFUSAL PROCEDURES</p>
+      </div>
+
+      <div class="campaign-levels-grid" id="campaign-levels-grid" role="list">
+        <!-- Level 1 (Playable) -->
+        <article class="campaign-level-card level-card-active" data-level="1" role="listitem" id="level-card-1">
+          <div class="level-card-top">
+            <span class="level-num-badge">LEVEL 01</span>
+            <div class="level-card-stars" id="stars-level-1" aria-label="Stars: 0 of 3">
+              <span class="star-icon star-inactive">★</span>
+              <span class="star-icon star-inactive">★</span>
+              <span class="star-icon star-inactive">★</span>
+            </div>
+          </div>
+          <div class="level-card-body">
+            <h2 class="level-card-title">FIRST CUT</h2>
+            <p class="level-card-desc">Single circuit target identification.</p>
+          </div>
+          <button id="btn-play-level-1" class="btn btn-primary btn-play-level" type="button" aria-label="Play Level 1: First Cut">PLAY</button>
+        </article>
+
+        <!-- Levels 02 - 10 (Locked / Future) -->
+        <article class="campaign-level-card level-card-locked" data-level="2" role="listitem" id="level-card-2">
+          <div class="level-card-top">
+            <span class="level-num-badge">LEVEL 02</span>
+            <div class="level-card-stars" id="stars-level-2" aria-label="Stars: 0 of 3" style="display: none;">
+              <span class="star-icon star-inactive">★</span>
+              <span class="star-icon star-inactive">★</span>
+              <span class="star-icon star-inactive">★</span>
+            </div>
+            <span class="lock-icon" id="lock-icon-2" aria-hidden="true">🔒</span>
+          </div>
+          <div class="level-card-body">
+            <h2 class="level-card-title">DUAL PATH</h2>
+            <p class="level-card-desc" id="desc-level-2">Protocol locked.</p>
+          </div>
+          <button id="btn-play-level-2" class="btn btn-secondary btn-play-level" disabled aria-disabled="true">LOCKED</button>
+        </article>
+
+        <article class="campaign-level-card level-card-locked" data-level="3" role="listitem" id="level-card-3">
+          <div class="level-card-top">
+            <span class="level-num-badge">LEVEL 03</span>
+            <div class="level-card-stars" id="stars-level-3" aria-label="Stars: 0 of 3" style="display: none;">
+              <span class="star-icon star-inactive">★</span>
+              <span class="star-icon star-inactive">★</span>
+              <span class="star-icon star-inactive">★</span>
+            </div>
+            <span class="lock-icon" id="lock-icon-3" aria-hidden="true">🔒</span>
+          </div>
+          <div class="level-card-body">
+            <h2 class="level-card-title">TRI-SPLIT</h2>
+            <p class="level-card-desc" id="desc-level-3">Protocol locked.</p>
+          </div>
+          <button id="btn-play-level-3" class="btn btn-secondary btn-play-level" disabled aria-disabled="true">LOCKED</button>
+        </article>
+
+        <article class="campaign-level-card level-card-locked" data-level="4" role="listitem" id="level-card-4">
+          <div class="level-card-top">
+            <span class="level-num-badge">LEVEL 04</span>
+            <div class="level-card-stars" id="stars-level-4" aria-label="Stars: 0 of 3" style="display: none;">
+              <span class="star-icon star-inactive">★</span>
+              <span class="star-icon star-inactive">★</span>
+              <span class="star-icon star-inactive">★</span>
+            </div>
+            <span class="lock-icon" id="lock-icon-4" aria-hidden="true">🔒</span>
+          </div>
+          <div class="level-card-body">
+            <h2 class="level-card-title">CIRCUIT FLOW</h2>
+            <p class="level-card-desc" id="desc-level-4">Protocol locked.</p>
+          </div>
+          <button id="btn-play-level-4" class="btn btn-secondary btn-play-level" disabled aria-disabled="true">LOCKED</button>
+        </article>
+
+        <article class="campaign-level-card level-card-locked" data-level="5" role="listitem" id="level-card-5">
+          <div class="level-card-top">
+            <span class="level-num-badge">LEVEL 05</span>
+            <div class="level-card-stars" id="stars-level-5" aria-label="Stars: 0 of 3" style="display: none;">
+              <span class="star-icon star-inactive">★</span>
+              <span class="star-icon star-inactive">★</span>
+              <span class="star-icon star-inactive">★</span>
+            </div>
+            <span class="lock-icon" id="lock-icon-5" aria-hidden="true">🔒</span>
+          </div>
+          <div class="level-card-body">
+            <h2 class="level-card-title">SIGNAL TRACE</h2>
+            <p class="level-card-desc" id="desc-level-5">Protocol locked.</p>
+          </div>
+          <button id="btn-play-level-5" class="btn btn-secondary btn-play-level" disabled aria-disabled="true">LOCKED</button>
+        </article>
+
+        <article class="campaign-level-card level-card-locked" data-level="6" role="listitem" id="level-card-6">
+          <div class="level-card-top">
+            <span class="level-num-badge">LEVEL 06</span>
+            <div class="level-card-stars" id="stars-level-6" aria-label="Stars: 0 of 3" style="display: none;">
+              <span class="star-icon star-inactive">★</span>
+              <span class="star-icon star-inactive">★</span>
+              <span class="star-icon star-inactive">★</span>
+            </div>
+            <span class="lock-icon" id="lock-icon-6" aria-hidden="true">🔒</span>
+          </div>
+          <div class="level-card-body">
+            <h2 class="level-card-title">COMBINATION PROTOCOL</h2>
+            <p class="level-card-desc" id="desc-level-6">Protocol locked.</p>
+          </div>
+          <button id="btn-play-level-6" class="btn btn-secondary btn-play-level" disabled aria-disabled="true">LOCKED</button>
+        </article>
+
+        <article class="campaign-level-card level-card-locked" data-level="7" role="listitem" id="level-card-7">
+          <div class="level-card-top">
+            <span class="level-num-badge">LEVEL 07</span>
+            <div class="level-card-stars" id="stars-level-7" aria-label="Stars: 0 of 3" style="display: none;">
+              <span class="star-icon star-inactive">★</span>
+              <span class="star-icon star-inactive">★</span>
+              <span class="star-icon star-inactive">★</span>
+            </div>
+            <span class="lock-icon" id="lock-icon-7" aria-hidden="true">🔒</span>
+          </div>
+          <div class="level-card-body">
+            <h2 class="level-card-title">CODE WORD</h2>
+            <p class="level-card-desc" id="desc-level-7">Decode the circuit.</p>
+          </div>
+          <button id="btn-play-level-7" class="btn btn-secondary btn-play-level" disabled aria-disabled="true">LOCKED</button>
+        </article>
+
+        <article class="campaign-level-card level-card-locked" data-level="8" role="listitem" id="level-card-8">
+          <div class="level-card-top">
+            <span class="level-num-badge">LEVEL 08</span>
+            <div class="level-card-stars" id="stars-level-8" aria-label="Stars: 0 of 3" style="display: none;">
+              <span class="star-icon star-inactive">★</span>
+              <span class="star-icon star-inactive">★</span>
+              <span class="star-icon star-inactive">★</span>
+            </div>
+            <span class="lock-icon" id="lock-icon-8" aria-hidden="true">🔒</span>
+          </div>
+          <div class="level-card-body">
+            <h2 class="level-card-title">CIRCUIT OVERLOAD</h2>
+            <p class="level-card-desc" id="desc-level-8">Protocol locked.</p>
+          </div>
+          <button id="btn-play-level-8" class="btn btn-secondary btn-play-level" disabled aria-disabled="true">LOCKED</button>
+        </article>
+      </div>
+
+      <button id="btn-back-campaign-select" class="btn btn-ghost" type="button" aria-label="Return to Main Menu">BACK</button>
+    </div>
+  </section>
+
+  <!-- ================= CAMPAIGN LEVEL BRIEFING MODAL ================= -->
+  <section id="screen-campaign-briefing" class="screen overlay-screen" aria-labelledby="campaign-briefing-title" role="dialog" aria-modal="true">
+    <div class="panel campaign-briefing-panel">
+      <span class="briefing-badge" id="campaign-briefing-badge">CHAPTER 1 · LEVEL 01</span>
+      <h2 class="briefing-title" id="campaign-briefing-title">FIRST CUT</h2>
+      
+      <p class="campaign-briefing-desc" id="campaign-briefing-desc">"Your first defusal. Identify and cut the target wire before the countdown reaches zero."</p>
+
+      <div class="briefing-rules-list" id="campaign-briefing-rules">
+        <div class="briefing-rule-item">
+          <span class="briefing-rule-icon" aria-hidden="true">⚡</span>
+          <div class="briefing-rule-text">
+            <strong>3-WIRE ARRAY</strong>
+            <span>Standard terminal bus with three active conductors.</span>
+          </div>
+        </div>
+        <div class="briefing-rule-item">
+          <span class="briefing-rule-icon" aria-hidden="true">🎯</span>
+          <div class="briefing-rule-text">
+            <strong>OBJECTIVE: BLUE WIRE</strong>
+            <span>Sever the Blue wire to disarm the circuit core safely.</span>
+          </div>
+        </div>
+        <div class="briefing-rule-item">
+          <span class="briefing-rule-icon" aria-hidden="true">⏱</span>
+          <div class="briefing-rule-text">
+            <strong>10.0 SECONDS</strong>
+            <span>Finish with 3+ seconds left for maximum star rating.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="briefing-actions">
+        <button id="btn-start-campaign-level" class="btn btn-primary" type="button" aria-label="Start Level 1 Now">START LEVEL</button>
+        <button id="btn-close-campaign-briefing" class="btn btn-ghost" type="button" aria-label="Back to Level Select">BACK</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= CAMPAIGN LEVEL RESULT SCREEN ================= -->
+  <section id="screen-campaign-result" class="screen" aria-labelledby="campaign-result-title">
+    <div class="menu-inner campaign-result-inner">
+      <h1 class="title campaign-result-title" id="campaign-result-title">LEVEL COMPLETE</h1>
+      <p class="campaign-result-subtitle" id="campaign-result-subtitle">FIRST CUT</p>
+
+      <!-- 3-Star Rating Row -->
+      <div class="campaign-stars-banner" id="campaign-stars-banner" aria-label="Stars Earned">
+        <span class="campaign-result-star" id="result-star-1">★</span>
+        <span class="campaign-result-star" id="result-star-2">★</span>
+        <span class="campaign-result-star" id="result-star-3">★</span>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-box">
+          <span class="stat-label">SCORE</span>
+          <span class="stat-value highlight" id="campaign-result-score">0</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-label">TIME</span>
+          <span class="stat-value" id="campaign-result-time">0.0s</span>
+        </div>
+        <div class="stat-box coin-stat" style="grid-column: span 2;">
+          <span class="stat-label">REWARD</span>
+          <span class="stat-value" id="campaign-result-coins">+50 COINS</span>
+        </div>
+      </div>
+
+      <div class="result-actions-grid">
+        <button id="btn-campaign-next-level" class="btn btn-primary" type="button">NEXT LEVEL</button>
+        <button id="btn-campaign-replay" class="btn btn-secondary" type="button">REPLAY</button>
+      </div>
+      <button id="btn-campaign-level-select" class="btn btn-ghost" type="button">LEVEL SELECT</button>
     </div>
   </section>
 
@@ -794,15 +1208,59 @@
     </div>
   </section>
 
-  <!-- ================= ACCOUNT SETTINGS SCREEN ================= -->
-  <section id="screen-account-settings" class="screen" aria-labelledby="settings-title">
+  <!-- ================= GAME SETTINGS SCREEN ================= -->
+  <section id="screen-settings" class="screen" aria-labelledby="settings-title">
     <div class="menu-inner settings-inner">
-      <h1 class="title" id="settings-title">ACCOUNT SETTINGS</h1>
+      <h1 class="title" id="settings-title">GAME SETTINGS</h1>
+      <p class="subtitle" style="margin-bottom: 6px;">GAMEPLAY & AUDIO PREFERENCES</p>
+
+      <div class="game-settings-container">
+        <!-- AUDIO & SENSORY -->
+        <div class="settings-section">
+          <div class="settings-section-title">AUDIO & SENSORY</div>
+          <div class="settings-row">
+            <div class="settings-row-copy">
+              <span class="settings-row-label">SOUND EFFECTS</span>
+              <span class="settings-row-desc">Procedural Web Audio API sound effects.</span>
+            </div>
+            <button id="btn-settings-toggle-sound" class="toggle-btn" type="button" aria-label="Toggle sound effects">ON</button>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-copy">
+              <span class="settings-row-label">HAPTICS</span>
+              <span class="settings-row-desc">Vibration feedback for wire cuts and defusals.</span>
+            </div>
+            <button id="btn-settings-toggle-haptics" class="toggle-btn" type="button" aria-label="Toggle haptic feedback">ON</button>
+          </div>
+        </div>
+
+        <!-- ACCESSIBILITY -->
+        <div class="settings-section">
+          <div class="settings-section-title">ACCESSIBILITY</div>
+          <div class="settings-row">
+            <div class="settings-row-copy">
+              <span class="settings-row-label">REDUCED MOTION</span>
+              <span class="settings-row-desc">Minimize screen shakes and flash pulses.</span>
+            </div>
+            <button id="btn-settings-toggle-motion" class="toggle-btn" type="button" aria-label="Toggle reduced motion preference">OFF</button>
+          </div>
+        </div>
+      </div>
+
+      <button id="btn-back-settings" class="btn btn-ghost" type="button">BACK</button>
+    </div>
+  </section>
+
+  <!-- ================= ACCOUNT SETTINGS SCREEN ================= -->
+  <section id="screen-account-settings" class="screen" aria-labelledby="account-settings-title">
+    <div class="menu-inner settings-inner">
+      <h1 class="title" id="account-settings-title">ACCOUNT SETTINGS</h1>
+      <p class="subtitle" style="margin-bottom: 6px;">PROFILE, CLOUD & DATA MANAGEMENT</p>
 
       <div class="settings-container">
-        <!-- PROFILE -->
+        <!-- PLAYER PROFILE -->
         <div class="settings-section">
-          <div class="settings-section-title">PROFILE</div>
+          <div class="settings-section-title">PLAYER PROFILE</div>
           <div class="settings-row">
             <div class="settings-row-copy">
               <span class="settings-row-label">DISPLAY NAME</span>
@@ -819,7 +1277,7 @@
           </div>
         </div>
 
-        <!-- ACCOUNT STATUS -->
+        <!-- ACCOUNT & CLOUD -->
         <div class="settings-section">
           <div class="settings-section-title">ACCOUNT & CLOUD</div>
           <div class="settings-row">
@@ -837,9 +1295,9 @@
           </div>
         </div>
 
-        <!-- PRIVACY -->
+        <!-- PRIVACY & DATA -->
         <div class="settings-section">
-          <div class="settings-section-title">DATA PRIVACY & CONSENT</div>
+          <div class="settings-section-title">PRIVACY & DATA</div>
           <div class="settings-row">
             <div class="settings-row-copy">
               <span class="settings-row-label">ANALYTICS</span>
@@ -856,37 +1314,18 @@
           </div>
         </div>
 
-        <!-- GAMEPLAY & PREFERENCES -->
-        <div class="settings-section">
-          <div class="settings-section-title">PREFERENCES</div>
-          <div class="settings-row">
-            <div class="settings-row-copy">
-              <span class="settings-row-label">SOUND EFFECTS</span>
-              <span class="settings-row-desc">Procedural Web Audio API sound effects.</span>
-            </div>
-            <button id="btn-settings-toggle-sound" class="toggle-btn" type="button" aria-label="Toggle sound effects">ON</button>
-          </div>
-          <div class="settings-row">
-            <div class="settings-row-copy">
-              <span class="settings-row-label">REDUCED MOTION</span>
-              <span class="settings-row-desc">Minimize screen shakes and flash pulses.</span>
-            </div>
-            <button id="btn-settings-toggle-motion" class="toggle-btn" type="button" aria-label="Toggle reduced motion preference">OFF</button>
-          </div>
-        </div>
-
         <!-- DATA & ACCOUNT ACTIONS -->
         <div class="settings-section">
           <div class="settings-section-title">DATA MANAGEMENT</div>
           <div class="settings-action-stack">
             <button id="btn-export-data" class="btn btn-secondary" type="button">EXPORT MY DATA (JSON)</button>
-            <button id="btn-logout" class="btn btn-secondary" type="button">LOG OUT</button>
+            <button id="btn-logout" class="btn btn-secondary" type="button" style="display: none;">LOG OUT</button>
             <button id="btn-delete-account" class="btn btn-danger" type="button">DELETE ACCOUNT</button>
           </div>
         </div>
       </div>
 
-      <button id="btn-back-settings" class="btn btn-ghost" type="button">BACK TO PROFILE</button>
+      <button id="btn-back-account-settings" class="btn btn-ghost" type="button">BACK</button>
     </div>
   </section>
 
