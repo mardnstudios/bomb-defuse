@@ -166,6 +166,7 @@ const AchievementDefinitions = {
   last_millisecond: { id: "last_millisecond", name: "LAST MILLISECOND", description: "Defuse a bomb with less than 0.1 seconds remaining.", icon: "⏳", category: "SPEED", target: 1, reward: 100, hidden: true, progressType: "count" },
   no_help: { id: "no_help", name: "NO HELP", description: "Complete 25 bombs without activating any power.", icon: "🚫", category: "MASTERY", target: 25, reward: 150, hidden: true, progressType: "count" },
   master_of_daily: { id: "master_of_daily", name: "MASTER OF THE DAILY", description: "Complete a Daily Challenge with all 7 bombs defused.", icon: "🌟", category: "DAILY", target: 1, reward: 150, hidden: true, progressType: "count" },
+  protocol_breaker: { id: "protocol_breaker", name: "PROTOCOL BREAKER", description: "Complete the FINAL PROTOCOL and finish Chapter 1.", icon: "★", category: "GAMEPLAY", target: 1, reward: 100, hidden: false, progressType: "count" },
 };
 
 const screens = Object.fromEntries([
@@ -187,6 +188,7 @@ const el = {
   // Campaign elements
   btnCampaign: byId("btn-campaign"),
   btnBackCampaignSelect: byId("btn-back-campaign-select"),
+  campaignChapterStatus: byId("campaign-chapter-status"),
   btnPlayLevel1: byId("btn-play-level-1"),
   btnPlayLevel2: byId("btn-play-level-2"),
   lockIcon2: byId("lock-icon-2"),
@@ -225,6 +227,23 @@ const el = {
   lockIcon8: byId("lock-icon-8"),
   descLevel8: byId("desc-level-8"),
   btnPlayLevel8: byId("btn-play-level-8"),
+  levelCard9: byId("level-card-9"),
+  starsLevel9: byId("stars-level-9"),
+  lockIcon9: byId("lock-icon-9"),
+  descLevel9: byId("desc-level-9"),
+  btnPlayLevel9: byId("btn-play-level-9"),
+  levelCard10: byId("level-card-10"),
+  starsLevel10: byId("stars-level-10"),
+  lockIcon10: byId("lock-icon-10"),
+  descLevel10: byId("desc-level-10"),
+  btnPlayLevel10: byId("btn-play-level-10"),
+  campaignChapterSummary: byId("campaign-chapter-summary"),
+  campaignChapterSummaryTitle: byId("campaign-chapter-summary-title"),
+  campaignChapterSummaryStats: byId("campaign-chapter-summary-stats"),
+  campaignChapterSummaryLevel: byId("campaign-chapter-summary-level"),
+  signalOrderContainer: byId("signal-order-container"),
+  signalOrderTerminals: byId("signal-order-terminals"),
+  signalOrderChip: byId("signal-order-chip"),
   circuitFlowContainer: byId("circuit-flow-container"),
   circuitFlowBoard: byId("circuit-flow-board"),
   circuitFlowSvg: byId("circuit-flow-svg"),
@@ -238,6 +257,8 @@ const el = {
   wordPuzzleBoard: byId("word-puzzle-board"),
   wordPuzzleStatus: byId("word-puzzle-status"),
   wordPuzzleChip: byId("word-puzzle-chip"),
+  wordPuzzleClue: byId("word-puzzle-clue"),
+  wordPuzzleClueText: byId("word-puzzle-clue-text"),
   wordAnswerRow: byId("word-answer-row"),
   wordTilesGrid: byId("word-tiles-grid"),
   btnWordClear: byId("btn-word-clear"),
@@ -5089,6 +5110,7 @@ const CampaignConfig = {
       timer: 15.0,
       wordConfig: {
         word: "RELAY",
+        clue: "A device or system that passes a signal from one point to another.",
         scrambledLetters: ["A", "L", "Y", "R", "E"],
         targetMapping: {
           wireColor: "blue",
@@ -5115,6 +5137,151 @@ const CampaignConfig = {
       baseReward: {
         coins: 50,
         score: 100
+      }
+    },
+    8: {
+      chapter: 1,
+      level: 8,
+      gameplayType: "CIRCUIT_OVERLOAD",
+      title: "CIRCUIT OVERLOAD",
+      subtitle: "LEVEL 08",
+      briefing: "Critical power surge detected. Route the overload bypass circuits across the capacitor grid, then sever the disarm wire.",
+      timer: 18.0,
+      circuitConfig: {
+        grid: { rows: 5, cols: 5 },
+        terminals: {
+          red: [[0, 0], [4, 2]],
+          yellow: [[0, 1], [2, 4]],
+          blue: [[1, 1], [4, 4]]
+        },
+        obstacles: [[2, 1], [3, 1], [2, 2], [3, 2], [3, 4]],
+        instructionText: "PHASE 1/2 · ROUTE OVERLOAD BYPASS"
+      },
+      targetMapping: {
+        wireColor: "green",
+        wireIndex: 2
+      },
+      wireCount: 5,
+      wires: [
+        { color: "red", index: 0, length: 0.85, hasWarningLed: false, signalNodes: 0 },
+        { color: "blue", index: 1, length: 0.95, hasWarningLed: false, signalNodes: 0 },
+        { color: "green", index: 2, length: 0.88, hasWarningLed: false, signalNodes: 0 },
+        { color: "yellow", index: 3, length: 0.92, hasWarningLed: false, signalNodes: 0 },
+        { color: "white", index: 4, length: 0.86, hasWarningLed: false, signalNodes: 0 }
+      ],
+      rulesInfo: [
+        { icon: "⚡", label: "OVERLOAD BYPASS", desc: "Route Red, Yellow, and Blue traces around overloaded capacitors." },
+        { icon: "🎯", label: "DISARM TARGET: GREEN WIRE", desc: "Once stabilized, sever the Green wire to discharge the core." },
+        { icon: "⏱", label: "18.0 SECONDS", desc: "Finish with 7.0+ seconds left for maximum star rating." }
+      ],
+      starConditions: [
+        { star: 1, desc: "Defuse the bomb", test: ctx => ctx.completed },
+        { star: 2, desc: "Finish with >= 7.0s remaining", test: ctx => ctx.completed && ctx.secondsLeft >= 7.0 },
+        { star: 3, desc: "Finish with >= 7.0s remaining and no powers used", test: ctx => ctx.completed && ctx.secondsLeft >= 7.0 && !ctx.powerUsed }
+      ],
+      baseReward: {
+        coins: 50,
+        score: 100
+      }
+    },
+    9: {
+      chapter: 1,
+      level: 9,
+      gameplayType: "SIGNAL_ORDER",
+      title: "CORE OVERRIDE",
+      subtitle: "LEVEL 09",
+      briefing: "The core is overloading. Signal frequencies are scrambled. Tap each terminal in ascending frequency order to stabilize the core, then sever the final wire.",
+      timer: 20.0,
+      signalOrderConfig: {
+        values: [7, 2, 9, 4],
+        correctOrder: [2, 4, 7, 9]
+      },
+      wireCount: 5,
+      wires: [
+        { color: "red",    index: 0, length: 0.82, hasWarningLed: false, signalNodes: 0 },
+        { color: "blue",   index: 1, length: 0.95, hasWarningLed: false, signalNodes: 0 },
+        { color: "green",  index: 2, length: 0.88, hasWarningLed: false, signalNodes: 0 },
+        { color: "yellow", index: 3, length: 0.92, hasWarningLed: false, signalNodes: 0 },
+        { color: "white",  index: 4, length: 0.86, hasWarningLed: false, signalNodes: 0 }
+      ],
+      targetMapping: {
+        wireColor: "white",
+        wireIndex: 4
+      },
+      rulesInfo: [
+        { icon: "📡", label: "4 SIGNAL TERMINALS", desc: "Tap terminals in ascending numeric frequency order." },
+        { icon: "🔌", label: "CORE DEFUSAL: WHITE WIRE", desc: "Once ordered, sever the White wire to discharge the core." },
+        { icon: "⏱", label: "20.0 SECONDS", desc: "Finish with 6.0+ seconds left for maximum star rating." }
+      ],
+      starConditions: [
+        { star: 1, desc: "Defuse the bomb",                             test: ctx => ctx.completed },
+        { star: 2, desc: "Finish with >= 6.0s remaining",               test: ctx => ctx.completed && ctx.secondsLeft >= 6.0 },
+        { star: 3, desc: "Finish with >= 6.0s remaining, no power used", test: ctx => ctx.completed && ctx.secondsLeft >= 6.0 && !ctx.powerUsed }
+      ],
+      baseReward: {
+        coins: 50,
+        score: 100
+      }
+    },
+    10: {
+      chapter: 1,
+      level: 10,
+      gameplayType: "FINAL_PROTOCOL",
+      title: "FINAL PROTOCOL",
+      subtitle: "LEVEL 10",
+      briefing: "The final protocol is active. Complete all three defusal phases before the shared countdown reaches zero.",
+      timer: 30.0,
+      memoryConfig: {
+        grid: { rows: 3, cols: 3 },
+        sequenceLength: 5,
+        sequence: [
+          [2, 0],
+          [0, 1],
+          [0, 0],
+          [0, 1],
+          [2, 0]
+        ],
+        revealActiveMs: 450,
+        revealGapMs: 180,
+        allowRepeatedNodes: true
+      },
+      circuitConfig: {
+        grid: { rows: 5, cols: 5 },
+        terminals: {
+          red: [[0, 0], [4, 1]],
+          blue: [[0, 4], [4, 3]],
+          green: [[1, 2], [3, 2]]
+        },
+        obstacles: [[0, 2], [1, 1], [1, 3], [2, 1], [2, 3], [3, 1], [3, 3], [4, 2]],
+        instructionText: "PHASE 2/3 · RESTORE THE CIRCUIT"
+      },
+      wireCount: 6,
+      wires: [
+        { color: "red", index: 0, length: 0.84, hasWarningLed: false, signalNodes: 0 },
+        { color: "blue", index: 1, length: 0.95, hasWarningLed: false, signalNodes: 0 },
+        { color: "yellow", index: 2, length: 0.92, hasWarningLed: false, signalNodes: 0 },
+        { color: "green", index: 3, length: 0.88, hasWarningLed: false, signalNodes: 0 },
+        { color: "white", index: 4, length: 0.86, hasWarningLed: false, signalNodes: 0 },
+        { color: "black", index: 5, length: 0.90, hasWarningLed: false, signalNodes: 0 }
+      ],
+      targetMapping: {
+        wireColor: "red",
+        wireIndex: 0
+      },
+      rulesInfo: [
+        { icon: "⚡", label: "PHASE 1 · SIGNAL MEMORY", desc: "GREEN → BLUE → RED → BLUE → GREEN" },
+        { icon: "🔄", label: "PHASE 2 · CIRCUIT BYPASS", desc: "CONNECT START → END" },
+        { icon: "✂️", label: "PHASE 3 · FINAL DEFUSAL", desc: "CUT THE RED WIRE" },
+        { icon: "⏱", label: "30 SECONDS TOTAL", desc: "Shared countdown across all 3 phases." }
+      ],
+      starConditions: [
+        { star: 1, desc: "Complete before the timer reaches zero", test: ctx => ctx.completed },
+        { star: 2, desc: "Finish with >= 5.0s remaining", test: ctx => ctx.completed && ctx.secondsLeft >= 5.0 },
+        { star: 3, desc: "Finish with >= 10.0s remaining and no failure", test: ctx => ctx.completed && ctx.secondsLeft >= 10.0 }
+      ],
+      baseReward: {
+        coins: 100,
+        score: 200
       }
     }
   }
@@ -5148,7 +5315,7 @@ const CircuitFlowManager = (() => {
 
     el.circuitFlowContainer.style.display = "flex";
     if (el.wiresContainer) el.wiresContainer.style.display = "none";
-    if (el.instruction) el.instruction.textContent = "RESTORE ALL CIRCUITS";
+    if (el.instruction) el.instruction.textContent = config?.instructionText || "RESTORE ALL CIRCUITS";
     updateProgress();
 
     renderGrid();
@@ -5287,7 +5454,10 @@ const CircuitFlowManager = (() => {
       const c = parseInt(cell.dataset.c, 10);
 
       // Remove previous active classes
-      cell.classList.remove("path-active-red", "path-active-blue", "path-active-green");
+      cell.classList.remove(
+        "path-active-red", "path-active-blue", "path-active-green",
+        "path-active-yellow", "path-active-white"
+      );
 
       // Check if in completed path
       let inCompleted = false;
@@ -5642,7 +5812,7 @@ const SignalMemoryManager = (() => {
 
       nodeEl.classList.remove("node-idle", "node-reveal-active");
       nodeEl.classList.add("node-player-selected", "node-correct");
-      nodeEl.disabled = true;
+      nodeEl.disabled = !activeConfig.allowRepeatedNodes;
 
       const badge = nodeEl.querySelector(".signal-node-badge");
       if (badge) badge.textContent = `[${stepNumber}]`;
@@ -5698,6 +5868,10 @@ const WordPuzzleManager = (() => {
     onFailCallback = onFail;
 
     if (!el.wordPuzzleContainer || !el.wordTilesGrid || !el.wordAnswerRow) return;
+
+    if (el.wordPuzzleClueText && config?.clue) {
+      el.wordPuzzleClueText.textContent = config.clue;
+    }
 
     el.wordPuzzleContainer.style.display = "flex";
     if (el.wiresContainer) el.wiresContainer.style.display = "none";
@@ -5918,6 +6092,109 @@ const WordPuzzleManager = (() => {
   return { init, cleanup, isActive, selectLetter, clearAnswer, submitAnswer };
 })();
 
+/* =========================================================
+   SIGNAL ORDER MANAGER (CAMPAIGN LEVEL 9 — CORE OVERRIDE)
+========================================================= */
+const SignalOrderManager = (() => {
+  let _config = null;
+  let _onComplete = null;
+  let _onFail = null;
+  let _correctOrder = [];
+  let _selectedValues = [];
+  let _locked = false;
+  let _done = false;
+
+  function init(config, onComplete, onFail) {
+    _config = config;
+    _onComplete = onComplete;
+    _onFail = onFail;
+    _correctOrder = config.correctOrder.slice();
+    _selectedValues = [];
+    _locked = false;
+    _done = false;
+
+    if (!el.signalOrderTerminals) return;
+    el.signalOrderTerminals.innerHTML = "";
+    if (el.signalOrderChip) el.signalOrderChip.textContent = "0 / 4 SIGNALS ORDERED";
+
+    // Render terminals in the display order of config.values (shuffled presentation)
+    config.values.forEach((val, i) => {
+      const btn = document.createElement("button");
+      btn.className = "signal-terminal-btn";
+      btn.id = `signal-terminal-${i}`;
+      btn.dataset.value = val;
+      btn.setAttribute("aria-label", `Signal terminal ${val} MHz`);
+      btn.setAttribute("type", "button");
+
+      btn.innerHTML = `
+        <span class="signal-terminal-freq" aria-hidden="true">${val}</span>
+        <span class="signal-terminal-unit">MHz</span>
+        <span class="signal-terminal-badge" id="signal-badge-${i}" style="display:none;"></span>
+      `;
+
+      btn.addEventListener("click", () => handleTap(val, btn, i));
+      el.signalOrderTerminals.appendChild(btn);
+    });
+  }
+
+  function handleTap(val, btn, idx) {
+    if (_locked || _done) return;
+    if (btn.classList.contains("signal-terminal-selected")) return;
+
+    const expectedValue = _correctOrder[_selectedValues.length];
+
+    if (val !== expectedValue) {
+      // Wrong order — fail immediately
+      _locked = true;
+      _done = true;
+      btn.classList.add("signal-terminal-wrong");
+      if (_onFail) _onFail("SIGNAL ORDER ERROR");
+      return;
+    }
+
+    // Correct selection
+    _selectedValues.push(val);
+    btn.classList.add("signal-terminal-selected");
+    btn.disabled = true;
+    btn.setAttribute("aria-disabled", "true");
+
+    const badge = byId(`signal-badge-${idx}`);
+    if (badge) {
+      badge.textContent = _selectedValues.length;
+      badge.style.display = "flex";
+    }
+
+    // Update progress chip
+    if (el.signalOrderChip) {
+      el.signalOrderChip.textContent = `${_selectedValues.length} / 4 SIGNALS ORDERED`;
+    }
+
+    // Play audio feedback if available
+    if (typeof AudioManager !== "undefined" && AudioManager.playWireCut) {
+      AudioManager.playWireCut();
+    }
+
+    if (_selectedValues.length === _correctOrder.length) {
+      _locked = true;
+      _done = true;
+      if (_onComplete) _onComplete();
+    }
+  }
+
+  function cleanup() {
+    _config = null;
+    _onComplete = null;
+    _onFail = null;
+    _selectedValues = [];
+    _locked = false;
+    _done = false;
+    if (el.signalOrderTerminals) el.signalOrderTerminals.innerHTML = "";
+    if (el.signalOrderChip) el.signalOrderChip.textContent = "0 / 4 SIGNALS ORDERED";
+  }
+
+  return { init, cleanup };
+})();
+
 const CampaignManager = (() => {
   function renderLevelSelect() {
     if (!profile.campaign) {
@@ -5939,6 +6216,14 @@ const CampaignManager = (() => {
     const l6Stars = Math.min(3, Math.max(0, camp.levelStars?.[6] || 0));
     const l7Stars = Math.min(3, Math.max(0, camp.levelStars?.[7] || 0));
     const l8Stars = Math.min(3, Math.max(0, camp.levelStars?.[8] || 0));
+    const l9Stars = Math.min(3, Math.max(0, camp.levelStars?.[9] || 0));
+    const l10Stars = Math.min(3, Math.max(0, camp.levelStars?.[10] || 0));
+    const isL10Unlocked = Array.isArray(camp.unlockedLevels) && camp.unlockedLevels.includes(10);
+    const isChapter1Complete = l10Stars > 0;
+    if (el.campaignChapterStatus) {
+      el.campaignChapterStatus.hidden = !isChapter1Complete;
+      el.campaignChapterStatus.textContent = isChapter1Complete ? "CHAPTER 1 COMPLETE" : "";
+    }
 
     // Update Level 1 Card
     if (el.starsLevel1) {
@@ -6232,17 +6517,24 @@ const CampaignManager = (() => {
       if (isL8Unlocked) {
         el.levelCard8.classList.remove("level-card-locked");
         el.levelCard8.classList.add("level-card-active");
-        if (el.descLevel8) el.descLevel8.textContent = "Coming Soon in next update.";
+        if (el.descLevel8) el.descLevel8.textContent = "Route the overload bypass.";
         if (el.lockIcon8) {
-          el.lockIcon8.style.display = "inline-block";
-          el.lockIcon8.textContent = "⏳";
-          el.lockIcon8.setAttribute("aria-label", "Coming Soon");
+          el.lockIcon8.style.display = "none";
+        }
+        if (el.starsLevel8) {
+          el.starsLevel8.style.display = "flex";
+          const starSpans = el.starsLevel8.querySelectorAll(".star-icon");
+          starSpans.forEach((span, idx) => {
+            const isActive = idx < l8Stars;
+            span.className = `star-icon ${isActive ? "star-active" : "star-inactive"}`;
+          });
+          el.starsLevel8.setAttribute("aria-label", `Stars: ${l8Stars} of 3`);
         }
         if (el.btnPlayLevel8) {
-          el.btnPlayLevel8.textContent = "COMING SOON";
-          el.btnPlayLevel8.className = "btn btn-secondary btn-play-level";
-          el.btnPlayLevel8.disabled = true;
-          el.btnPlayLevel8.setAttribute("aria-disabled", "true");
+          el.btnPlayLevel8.textContent = "PLAY";
+          el.btnPlayLevel8.className = "btn btn-primary btn-play-level";
+          el.btnPlayLevel8.disabled = false;
+          el.btnPlayLevel8.setAttribute("aria-disabled", "false");
         }
       } else {
         el.levelCard8.classList.add("level-card-locked");
@@ -6262,6 +6554,91 @@ const CampaignManager = (() => {
           el.btnPlayLevel8.disabled = true;
           el.btnPlayLevel8.setAttribute("aria-disabled", "true");
         }
+      }
+    }
+
+    // Update Level 9 Card
+    const isL9Unlocked = Array.isArray(camp.unlockedLevels) && camp.unlockedLevels.includes(9);
+    if (el.levelCard9) {
+      if (isL9Unlocked) {
+        el.levelCard9.classList.remove("level-card-locked");
+        el.levelCard9.classList.add("level-card-active");
+        if (el.descLevel9) el.descLevel9.textContent = "Order the signals. Sever the core.";
+        if (el.lockIcon9) {
+          el.lockIcon9.style.display = "none";
+        }
+        if (el.starsLevel9) {
+          el.starsLevel9.style.display = "flex";
+          const starSpans = el.starsLevel9.querySelectorAll(".star-icon");
+          starSpans.forEach((span, idx) => {
+            const isActive = idx < l9Stars;
+            span.className = `star-icon ${isActive ? "star-active" : "star-inactive"}`;
+          });
+          el.starsLevel9.setAttribute("aria-label", `Stars: ${l9Stars} of 3`);
+        }
+        if (el.btnPlayLevel9) {
+          el.btnPlayLevel9.textContent = "PLAY";
+          el.btnPlayLevel9.className = "btn btn-primary btn-play-level";
+          el.btnPlayLevel9.disabled = false;
+          el.btnPlayLevel9.setAttribute("aria-disabled", "false");
+        }
+      } else {
+        el.levelCard9.classList.add("level-card-locked");
+        el.levelCard9.classList.remove("level-card-active");
+        if (el.descLevel9) el.descLevel9.textContent = "Protocol locked.";
+        if (el.lockIcon9) {
+          el.lockIcon9.style.display = "inline-block";
+          el.lockIcon9.textContent = "🔒";
+          el.lockIcon9.setAttribute("aria-label", "Locked");
+        }
+        if (el.starsLevel9) {
+          el.starsLevel9.style.display = "none";
+        }
+        if (el.btnPlayLevel9) {
+          el.btnPlayLevel9.textContent = "LOCKED";
+          el.btnPlayLevel9.className = "btn btn-secondary btn-play-level";
+          el.btnPlayLevel9.disabled = true;
+          el.btnPlayLevel9.setAttribute("aria-disabled", "true");
+        }
+      }
+    }
+
+    // Update Level 10 Card using the same locked/playable pattern as Level 9
+    if (el.levelCard10) {
+      el.levelCard10.classList.add("level-card-locked");
+      el.levelCard10.classList.remove("level-card-coming-soon");
+      el.levelCard10.classList.remove("level-card-active");
+      if (el.lockIcon10) {
+        el.lockIcon10.style.display = "inline-block";
+        el.lockIcon10.textContent = "🔒";
+        el.lockIcon10.setAttribute("aria-label", "Locked");
+      }
+      if (el.descLevel10) el.descLevel10.textContent = "Protocol locked.";
+      if (el.btnPlayLevel10) {
+        el.btnPlayLevel10.textContent = "LOCKED";
+        el.btnPlayLevel10.className = "btn btn-secondary btn-play-level";
+        el.btnPlayLevel10.disabled = true;
+        el.btnPlayLevel10.setAttribute("aria-disabled", "true");
+      }
+    }
+
+    if (el.levelCard10 && isL10Unlocked) {
+      el.levelCard10.classList.remove("level-card-locked", "level-card-coming-soon");
+      el.levelCard10.classList.add("level-card-active");
+      if (el.lockIcon10) el.lockIcon10.style.display = "none";
+      if (el.descLevel10) el.descLevel10.textContent = "Complete the final Chapter 1 protocol.";
+      if (el.starsLevel10) {
+        el.starsLevel10.style.display = "flex";
+        el.starsLevel10.querySelectorAll(".star-icon").forEach((span, idx) => {
+          span.className = `star-icon ${idx < l10Stars ? "star-active" : "star-inactive"}`;
+        });
+        el.starsLevel10.setAttribute("aria-label", `Stars: ${l10Stars} of 3`);
+      }
+      if (el.btnPlayLevel10) {
+        el.btnPlayLevel10.textContent = "PLAY";
+        el.btnPlayLevel10.className = "btn btn-primary btn-play-level";
+        el.btnPlayLevel10.disabled = false;
+        el.btnPlayLevel10.setAttribute("aria-disabled", "false");
       }
     }
   }
@@ -6358,7 +6735,107 @@ const CampaignManager = (() => {
 
     setBombStatus("ARMING");
 
-    if (levelDef.gameplayType === "SIGNAL_MEMORY") {
+    if (levelDef.gameplayType === "FINAL_PROTOCOL") {
+      // Level 10 uses one timer for all three puzzle phases.
+      CircuitFlowManager.cleanup();
+      SignalMemoryManager.cleanup();
+      WordPuzzleManager.cleanup();
+      SignalOrderManager.cleanup();
+      if (el.wordPuzzleContainer) el.wordPuzzleContainer.style.display = "none";
+      if (el.signalOrderContainer) el.signalOrderContainer.style.display = "none";
+      if (el.circuitFlowContainer) el.circuitFlowContainer.style.display = "none";
+      if (el.wiresContainer) {
+        el.wiresContainer.replaceChildren();
+        el.wiresContainer.style.display = "none";
+      }
+      if (el.signalMemoryContainer) el.signalMemoryContainer.style.display = "flex";
+
+      run.bomb = {
+        number: 1,
+        wires: [],
+        time: levelDef.timer,
+        challenge: { text: "REPEAT THE SIGNAL SEQUENCE", type: "memory", answerIndex: 0 },
+        phases: [],
+        currentPhaseIndex: 0,
+        totalPhases: 3,
+        event: null
+      };
+
+      if (el.instruction) el.instruction.textContent = "PHASE 1/3 · REPEAT THE SIGNAL SEQUENCE";
+      renderTimer(levelDef.timer, levelDef.timer);
+      setBombStatus("RECORDING");
+
+      const failFinalProtocol = reason => {
+        Timer.stop();
+        SignalMemoryManager.cleanup();
+        CircuitFlowManager.cleanup();
+        explode(reason || "FINAL PROTOCOL FAILURE");
+      };
+
+      Timer.start(levelDef.timer, renderTimer, () => failFinalProtocol("TIME'S UP!"));
+
+      SignalMemoryManager.init(
+        levelDef.memoryConfig,
+        () => {},
+        () => {
+          if (state !== "PLAYING") return;
+          SignalMemoryManager.cleanup();
+          run.inputLocked = true;
+          if (el.instruction) el.instruction.textContent = "PHASE 1/3 COMPLETE";
+          setBombStatus("ARMED");
+          if (el.bomb) {
+            el.bomb.classList.add("pcb-pulse-phase");
+            later(() => el.bomb?.classList.remove("pcb-pulse-phase"), 350);
+          }
+
+          later(() => {
+            if (state !== "PLAYING") return;
+            if (el.instruction) el.instruction.textContent = "PHASE 2/3 · RESTORE THE CIRCUIT";
+            if (el.signalMemoryContainer) el.signalMemoryContainer.style.display = "none";
+            if (el.wiresContainer) el.wiresContainer.style.display = "none";
+            if (el.circuitFlowContainer) el.circuitFlowContainer.style.display = "flex";
+            run.bomb.currentPhaseIndex = 1;
+            run.bomb.challenge = { text: "RESTORE THE CIRCUIT", type: "circuit", answerIndex: 0 };
+            run.inputLocked = false;
+
+            CircuitFlowManager.init(levelDef.circuitConfig, () => {
+              if (state !== "PLAYING") return;
+              CircuitFlowManager.cleanup();
+              run.inputLocked = true;
+              if (el.instruction) el.instruction.textContent = "PHASE 2/3 COMPLETE";
+              setBombStatus("ARMED");
+              if (el.bomb) {
+                el.bomb.classList.add("pcb-pulse-phase");
+                later(() => el.bomb?.classList.remove("pcb-pulse-phase"), 350);
+              }
+
+              later(() => {
+                if (state !== "PLAYING") return;
+                const wires = levelDef.wires.map(w => ({ ...w, cut: false }));
+                const phase3 = {
+                  phaseIndex: 2,
+                  totalPhases: 3,
+                  type: "color",
+                  text: "CUT THE RED WIRE",
+                  answerIndex: levelDef.targetMapping.wireIndex
+                };
+                run.bomb.wires = wires;
+                run.bomb.phases = [phase3];
+                run.bomb.challenge = { ...phase3 };
+                run.bomb.currentPhaseIndex = 0;
+                run.bomb.totalPhases = 1;
+                if (el.circuitFlowContainer) el.circuitFlowContainer.style.display = "none";
+                if (el.wiresContainer) el.wiresContainer.style.display = "flex";
+                if (el.instruction) el.instruction.textContent = "PHASE 3/3 · CUT THE RED WIRE";
+                renderWires(run.bomb.wires);
+                run.inputLocked = false;
+              }, 320);
+            });
+          }, 420);
+        },
+        failFinalProtocol
+      );
+    } else if (levelDef.gameplayType === "SIGNAL_MEMORY") {
       CircuitFlowManager.cleanup();
       run.bomb = {
         number: 1,
@@ -6562,8 +7039,10 @@ const CampaignManager = (() => {
       CircuitFlowManager.cleanup();
       SignalMemoryManager.cleanup();
       WordPuzzleManager.cleanup();
+      SignalOrderManager.cleanup();
       if (el.wordPuzzleContainer) el.wordPuzzleContainer.style.display = "none";
       if (el.signalMemoryContainer) el.signalMemoryContainer.style.display = "none";
+      if (el.signalOrderContainer) el.signalOrderContainer.style.display = "none";
 
       run.bomb = {
         number: 1,
@@ -6591,14 +7070,158 @@ const CampaignManager = (() => {
           powerUsed: Boolean(run.powerUsedOnRun)
         });
       });
+    } else if (levelDef.gameplayType === "CIRCUIT_OVERLOAD") {
+      CircuitFlowManager.cleanup();
+      SignalMemoryManager.cleanup();
+      WordPuzzleManager.cleanup();
+      SignalOrderManager.cleanup();
+      if (el.wordPuzzleContainer) el.wordPuzzleContainer.style.display = "none";
+      if (el.signalMemoryContainer) el.signalMemoryContainer.style.display = "none";
+      if (el.signalOrderContainer) el.signalOrderContainer.style.display = "none";
+      if (el.wiresContainer) el.wiresContainer.style.display = "none";
+      if (el.circuitFlowContainer) el.circuitFlowContainer.style.display = "flex";
+
+      run.bomb = {
+        number: 1,
+        wires: [],
+        time: levelDef.timer,
+        challenge: { text: "ROUTE OVERLOAD BYPASS" },
+        phases: [],
+        currentPhaseIndex: 0,
+        totalPhases: 2,
+        event: null
+      };
+
+      if (el.instruction) el.instruction.textContent = "PHASE 1/2 · ROUTE OVERLOAD BYPASS";
+      renderTimer(levelDef.timer, levelDef.timer);
+      setBombStatus("ARMED");
+
+      CircuitFlowManager.init(levelDef.circuitConfig, () => {
+        if (state !== "PLAYING") return;
+        CircuitFlowManager.cleanup();
+
+        run.inputLocked = true;
+        if (el.instruction) el.instruction.textContent = "OVERLOAD STABILIZED";
+        setBombStatus("ARMED");
+
+        if (AudioManager.playPhaseComplete) AudioManager.playPhaseComplete();
+        if (el.bomb) {
+          el.bomb.classList.add("pcb-pulse-phase");
+          later(() => el.bomb?.classList.remove("pcb-pulse-phase"), 350);
+        }
+
+        later(() => {
+          if (state !== "PLAYING") return;
+
+          const targetMapping = levelDef.targetMapping;
+          const wires = levelDef.wires.map(w => ({ ...w, cut: false }));
+          const phase2 = {
+            phaseIndex: 1,
+            totalPhases: 2,
+            type: "color",
+            text: `CUT THE ${(targetMapping.wireColor || "green").toUpperCase()} WIRE`,
+            answerIndex: targetMapping.wireIndex
+          };
+
+          run.bomb.wires = wires;
+          run.bomb.phases = [phase2];
+          run.bomb.challenge = { ...phase2 };
+          run.bomb.currentPhaseIndex = 0;
+          run.bomb.totalPhases = 1;
+
+          if (el.circuitFlowContainer) el.circuitFlowContainer.style.display = "none";
+          if (el.wiresContainer) el.wiresContainer.style.display = "flex";
+
+          if (el.instruction) el.instruction.textContent = `PHASE 2/2 · ${phase2.text}`;
+          renderWires(run.bomb.wires);
+          run.inputLocked = false;
+        }, 320);
+      });
+    } else if (levelDef.gameplayType === "SIGNAL_ORDER") {
+      CircuitFlowManager.cleanup();
+      SignalMemoryManager.cleanup();
+      WordPuzzleManager.cleanup();
+      if (el.circuitFlowContainer) el.circuitFlowContainer.style.display = "none";
+      if (el.signalMemoryContainer) el.signalMemoryContainer.style.display = "none";
+      if (el.wordPuzzleContainer) el.wordPuzzleContainer.style.display = "none";
+      if (el.wiresContainer) el.wiresContainer.style.display = "none";
+      if (el.signalOrderContainer) el.signalOrderContainer.style.display = "flex";
+
+      run.bomb = {
+        number: 1,
+        wires: [],
+        time: levelDef.timer,
+        challenge: { text: "ORDER SIGNALS: LOWEST TO HIGHEST" },
+        phases: [],
+        currentPhaseIndex: 0,
+        totalPhases: 2,
+        event: null
+      };
+
+      if (el.instruction) el.instruction.textContent = "ORDER SIGNALS: LOWEST TO HIGHEST";
+      renderTimer(levelDef.timer, levelDef.timer);
+      setBombStatus("ARMED");
+
+      SignalOrderManager.init(
+        levelDef.signalOrderConfig,
+        // onComplete: all 4 terminals tapped in order → Phase 2
+        () => {
+          if (state !== "PLAYING") return;
+          run.inputLocked = true;
+          if (el.instruction) el.instruction.textContent = "SIGNALS STABILIZED";
+          setBombStatus("ARMED");
+
+          if (AudioManager && AudioManager.playPhaseComplete) AudioManager.playPhaseComplete();
+          if (el.bomb) {
+            el.bomb.classList.add("pcb-pulse-phase");
+            later(() => el.bomb?.classList.remove("pcb-pulse-phase"), 350);
+          }
+
+          later(() => {
+            if (state !== "PLAYING") return;
+
+            const targetMapping = levelDef.targetMapping;
+            const wires = levelDef.wires.map(w => ({ ...w, cut: false }));
+            const phase2 = {
+              phaseIndex: 1,
+              totalPhases: 2,
+              type: "color",
+              text: `CUT THE ${(targetMapping.wireColor || "white").toUpperCase()} WIRE`,
+              answerIndex: targetMapping.wireIndex
+            };
+
+            run.bomb.wires = wires;
+            run.bomb.phases = [phase2];
+            run.bomb.challenge = { ...phase2 };
+            run.bomb.currentPhaseIndex = 0;
+            run.bomb.totalPhases = 1;
+
+            if (el.signalOrderContainer) el.signalOrderContainer.style.display = "none";
+            if (el.wiresContainer) el.wiresContainer.style.display = "flex";
+
+            if (el.instruction) el.instruction.textContent = `PHASE 2/2 · ${phase2.text}`;
+            renderWires(run.bomb.wires);
+            run.inputLocked = false;
+          }, 320);
+        },
+        // onFail: wrong terminal order
+        (failReason) => {
+          Timer.stop();
+          SignalOrderManager.cleanup();
+          explode(failReason || "SIGNAL ORDER ERROR");
+        }
+      );
     } else {
       CircuitFlowManager.cleanup();
       SignalMemoryManager.cleanup();
       WordPuzzleManager.cleanup();
+      SignalOrderManager.cleanup();
       if (el.wordPuzzleContainer) el.wordPuzzleContainer.style.display = "none";
       if (el.signalMemoryContainer) el.signalMemoryContainer.style.display = "none";
       if (el.circuitFlowContainer) el.circuitFlowContainer.style.display = "none";
+      if (el.signalOrderContainer) el.signalOrderContainer.style.display = "none";
       if (el.wiresContainer) el.wiresContainer.style.display = "flex";
+
 
       const wires = levelDef.wires.map(w => ({ ...w, cut: false }));
       const phases = levelDef.phases ? levelDef.phases.map(p => ({ ...p })) : [{ phaseIndex: 0, totalPhases: 1, ...levelDef.rule }];
@@ -6631,7 +7254,7 @@ const CampaignManager = (() => {
     PowerManager.clearScanner();
     updatePowerUI();
 
-    if (levelDef.gameplayType !== "SIGNAL_MEMORY" && levelDef.gameplayType !== "COMBINATION") {
+    if (levelDef.gameplayType !== "SIGNAL_MEMORY" && levelDef.gameplayType !== "COMBINATION" && levelDef.gameplayType !== "FINAL_PROTOCOL") {
       later(() => {
         if (state === "PLAYING" && !PowerManager.isFrozen && !PowerManager.isSlowed) {
           setBombStatus("ARMED");
@@ -6639,11 +7262,14 @@ const CampaignManager = (() => {
       }, 180);
 
       Timer.start(levelDef.timer, renderTimer, () => {
-        if (levelDef.gameplayType === "FREE_FLOW") {
+        if (levelDef.gameplayType === "FREE_FLOW" || levelDef.gameplayType === "CIRCUIT_OVERLOAD") {
           CircuitFlowManager.cleanup();
           failLevel(levelNum, "TIME'S UP!");
         } else if (levelDef.gameplayType === "WORD_PUZZLE") {
           WordPuzzleManager.cleanup();
+          failLevel(levelNum, "TIME'S UP!");
+        } else if (levelDef.gameplayType === "SIGNAL_ORDER") {
+          SignalOrderManager.cleanup();
           failLevel(levelNum, "TIME'S UP!");
         } else {
           explode("TIME'S UP!");
@@ -6710,10 +7336,17 @@ const CampaignManager = (() => {
 
     SaveManager.save(profile);
     refreshPersistentUI();
+    if (levelNum === 10) {
+      AchievementManager.unlock("protocol_breaker");
+    }
+
+    const isChapterComplete = levelNum === 10;
+    const chapterStars = Object.values(profile.campaign.levelStars || {}).reduce((sum, value) => sum + Math.min(3, Math.max(0, Number(value) || 0)), 0);
+    const chapterScore = Object.values(profile.campaign.levelHighScores || {}).reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0);
 
     // Result UI Population
     if (el.campaignResultTitle) {
-      el.campaignResultTitle.textContent = "LEVEL COMPLETE";
+      el.campaignResultTitle.textContent = isChapterComplete ? "CHAPTER 1 COMPLETE" : "LEVEL COMPLETE";
       el.campaignResultTitle.style.color = "var(--accent)";
     }
     if (el.campaignResultSubtitle) {
@@ -6729,7 +7362,21 @@ const CampaignManager = (() => {
     if (el.campaignResultScore) el.campaignResultScore.textContent = finalScore.toLocaleString();
     if (el.campaignResultTime) el.campaignResultTime.textContent = `${timeElapsed.toFixed(1)}s`;
     if (el.campaignResultCoins) el.campaignResultCoins.textContent = `+${coinsReward} COINS`;
-    if (el.btnCampaignNextLevel) el.btnCampaignNextLevel.style.display = "block";
+    if (el.btnCampaignNextLevel) {
+      el.btnCampaignNextLevel.style.display = "block";
+      el.btnCampaignNextLevel.textContent = isChapterComplete ? "LEVEL SELECT" : "NEXT LEVEL";
+    }
+    if (el.btnCampaignLevelSelect) {
+      el.btnCampaignLevelSelect.style.display = isChapterComplete ? "none" : "block";
+    }
+    if (el.campaignChapterSummary) {
+      el.campaignChapterSummary.style.display = isChapterComplete ? "grid" : "none";
+      if (isChapterComplete) {
+        if (el.campaignChapterSummaryTitle) el.campaignChapterSummaryTitle.textContent = "CHAPTER 1 COMPLETE";
+        if (el.campaignChapterSummaryStats) el.campaignChapterSummaryStats.textContent = `${chapterStars} / 30 STARS · ${chapterScore.toLocaleString()} SCORE`;
+        if (el.campaignChapterSummaryLevel) el.campaignChapterSummaryLevel.textContent = "LEVEL 10 COMPLETE";
+      }
+    }
 
     later(() => {
       state = "CAMPAIGN_RESULT";
@@ -6742,6 +7389,7 @@ const CampaignManager = (() => {
     CircuitFlowManager.cleanup();
     SignalMemoryManager.cleanup();
     WordPuzzleManager.cleanup();
+    SignalOrderManager.cleanup();
 
     profile.stats.totalBombsFailed = (profile.stats.totalBombsFailed || 0) + 1;
     SaveManager.save(profile);
@@ -6763,7 +7411,12 @@ const CampaignManager = (() => {
     if (el.campaignResultScore) el.campaignResultScore.textContent = "0";
     if (el.campaignResultTime) el.campaignResultTime.textContent = "FAILED";
     if (el.campaignResultCoins) el.campaignResultCoins.textContent = "+0 COINS";
-    if (el.btnCampaignNextLevel) el.btnCampaignNextLevel.style.display = "none";
+    if (el.btnCampaignNextLevel) {
+      el.btnCampaignNextLevel.style.display = "none";
+      el.btnCampaignNextLevel.textContent = "NEXT LEVEL";
+    }
+    if (el.btnCampaignLevelSelect) el.btnCampaignLevelSelect.style.display = "block";
+    if (el.campaignChapterSummary) el.campaignChapterSummary.style.display = "none";
 
     state = "CAMPAIGN_RESULT";
     showScreen("campaign-result");
@@ -8173,6 +8826,30 @@ if (byId("btn-play-level-7")) {
   byId("btn-play-level-7").addEventListener("click", () => {
     if (profile.campaign?.unlockedLevels?.includes(7)) {
       CampaignManager.openBriefing(7);
+    }
+  });
+}
+
+if (byId("btn-play-level-8")) {
+  byId("btn-play-level-8").addEventListener("click", () => {
+    if (profile.campaign?.unlockedLevels?.includes(8)) {
+      CampaignManager.openBriefing(8);
+    }
+  });
+}
+
+if (byId("btn-play-level-9")) {
+  byId("btn-play-level-9").addEventListener("click", () => {
+    if (profile.campaign?.unlockedLevels?.includes(9)) {
+      CampaignManager.openBriefing(9);
+    }
+  });
+}
+
+if (byId("btn-play-level-10")) {
+  byId("btn-play-level-10").addEventListener("click", () => {
+    if (profile.campaign?.unlockedLevels?.includes(10)) {
+      CampaignManager.openBriefing(10);
     }
   });
 }

@@ -415,6 +415,10 @@
                 <span class="word-puzzle-status" id="word-puzzle-status">CODE INPUT</span>
                 <span class="word-puzzle-chip" id="word-puzzle-chip">5 LETTERS</span>
               </div>
+              <div class="word-puzzle-clue" id="word-puzzle-clue" aria-label="Decryption Clue">
+                <span class="word-puzzle-clue-icon" aria-hidden="true">💡</span>
+                <span class="word-puzzle-clue-text" id="word-puzzle-clue-text">A device or system that passes a signal from one point to another.</span>
+              </div>
               <div class="word-answer-row" id="word-answer-row" role="region" aria-label="Current answer code">
                 <div class="word-slot" data-index="0" id="word-slot-0"><span class="word-slot-char">_</span></div>
                 <div class="word-slot" data-index="1" id="word-slot-1"><span class="word-slot-char">_</span></div>
@@ -429,6 +433,16 @@
                 <button id="btn-word-clear" class="btn btn-secondary btn-word-ctrl" type="button" aria-label="Clear entered code letters">CLEAR</button>
                 <button id="btn-word-submit" class="btn btn-primary btn-word-ctrl" type="button" disabled aria-disabled="true" aria-label="Submit code word">SUBMIT</button>
               </div>
+            </div>
+          </div>
+
+          <!-- Signal Order Assembly (Level 9 / Core Override) -->
+          <div class="signal-order-container" id="signal-order-container" style="display: none;" role="region" aria-label="Signal ordering puzzle">
+            <div class="signal-order-board" id="signal-order-board">
+              <div class="signal-order-terminals" id="signal-order-terminals" role="group" aria-label="Signal terminals"></div>
+            </div>
+            <div class="signal-order-status-bar">
+              <span class="signal-order-chip" id="signal-order-chip">0 / 4 SIGNALS ORDERED</span>
             </div>
           </div>
 
@@ -592,6 +606,7 @@
         <span class="chapter-badge">CHAPTER 1</span>
         <h1 class="title campaign-chapter-title" id="campaign-select-title">FIRST PROTOCOL</h1>
         <p class="subtitle campaign-chapter-subtitle">FUNDAMENTAL DEFUSAL PROCEDURES</p>
+        <span class="chapter-complete-pill" id="campaign-chapter-status" hidden>CHAPTER 1 COMPLETE</span>
       </div>
 
       <div class="campaign-levels-grid" id="campaign-levels-grid" role="list">
@@ -731,6 +746,52 @@
           </div>
           <button id="btn-play-level-8" class="btn btn-secondary btn-play-level" disabled aria-disabled="true">LOCKED</button>
         </article>
+
+        <article class="campaign-level-card level-card-locked" data-level="9" role="listitem" id="level-card-9">
+          <div class="level-card-top">
+            <span class="level-num-badge">LEVEL 09</span>
+            <div class="level-card-stars" id="stars-level-9" aria-label="Stars: 0 of 3" style="display: none;">
+              <span class="star-icon star-inactive">★</span>
+              <span class="star-icon star-inactive">★</span>
+              <span class="star-icon star-inactive">★</span>
+            </div>
+            <span class="lock-icon" id="lock-icon-9" aria-hidden="true">🔒</span>
+          </div>
+          <div class="level-card-body">
+            <h2 class="level-card-title">CORE OVERRIDE</h2>
+            <p class="level-card-desc" id="desc-level-9">Protocol locked.</p>
+          </div>
+          <button id="btn-play-level-9" class="btn btn-secondary btn-play-level" disabled aria-disabled="true">LOCKED</button>
+        </article>
+
+        <article class="campaign-level-card level-card-locked level-card-finale" data-level="10" role="listitem" id="level-card-10" aria-label="Level 10: Final Protocol">
+          <div class="level-card-top">
+            <span class="level-num-badge">LEVEL 10</span>
+            <div class="level-card-stars" id="stars-level-10" aria-label="Stars: 0 of 3" style="display: none;">
+              <span class="star-icon star-inactive">★</span>
+              <span class="star-icon star-inactive">★</span>
+              <span class="star-icon star-inactive">★</span>
+            </div>
+            <span class="lock-icon" id="lock-icon-10" aria-hidden="true">🔒</span>
+          </div>
+          <div class="level-card-body">
+            <h2 class="level-card-title">FINAL PROTOCOL</h2>
+            <p class="level-card-desc" id="desc-level-10">Protocol locked.</p>
+          </div>
+          <button id="btn-play-level-10" class="btn btn-secondary btn-play-level" disabled aria-disabled="true">LOCKED</button>
+        </article>
+
+        <section class="campaign-chapter-placeholder campaign-chapter-panel" role="region" aria-label="Chapter 2: Coming Soon">
+          <div class="chapter-panel-header">
+            <span class="chapter-placeholder-label chapter-panel-badge">CHAPTER 2</span>
+            <span class="chapter-panel-lock" aria-hidden="true">🔒</span>
+          </div>
+          <div class="chapter-panel-content">
+            <strong class="chapter-placeholder-status chapter-panel-title">COMING SOON</strong>
+            <p class="chapter-placeholder-subtitle chapter-panel-lead">NEW PROTOCOLS ARE BEING PREPARED.</p>
+            <p class="chapter-panel-quote">"New threats. New systems. New protocols."</p>
+          </div>
+        </section>
       </div>
 
       <button id="btn-back-campaign-select" class="btn btn-ghost" type="button" aria-label="Return to Main Menu">BACK</button>
@@ -802,6 +863,12 @@
           <span class="stat-label">REWARD</span>
           <span class="stat-value" id="campaign-result-coins">+50 COINS</span>
         </div>
+      </div>
+
+      <div class="campaign-chapter-summary" id="campaign-chapter-summary" style="display: none;" aria-label="Chapter 1 completion summary">
+        <span id="campaign-chapter-summary-title">CHAPTER 1 COMPLETE</span>
+        <span id="campaign-chapter-summary-stats">0 STARS · 0 SCORE</span>
+        <span id="campaign-chapter-summary-level">LEVEL 10 COMPLETE</span>
       </div>
 
       <div class="result-actions-grid">
