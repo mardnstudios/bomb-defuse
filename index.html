@@ -781,14 +781,14 @@
           <button id="btn-play-level-10" class="btn btn-secondary btn-play-level" disabled aria-disabled="true">LOCKED</button>
         </article>
 
-        <section class="campaign-chapter-placeholder campaign-chapter-panel" role="region" aria-label="Chapter 2: Coming Soon">
+        <section class="campaign-chapter-placeholder" role="region" aria-label="Chapter 2: Coming Soon">
           <div class="chapter-panel-header">
             <span class="chapter-placeholder-label chapter-panel-badge">CHAPTER 2</span>
             <span class="chapter-panel-lock" aria-hidden="true">🔒</span>
           </div>
           <div class="chapter-panel-content">
             <strong class="chapter-placeholder-status chapter-panel-title">COMING SOON</strong>
-            <p class="chapter-placeholder-subtitle chapter-panel-lead">NEW PROTOCOLS ARE BEING PREPARED.</p>
+            <p class="chapter-placeholder-subtitle chapter-panel-lead">New protocols are being prepared.</p>
             <p class="chapter-panel-quote">"New threats. New systems. New protocols."</p>
           </div>
         </section>
@@ -864,6 +864,8 @@
           <span class="stat-value" id="campaign-result-coins">+50 COINS</span>
         </div>
       </div>
+
+      <p class="campaign-economy-note">SCORE tracks campaign performance. COINS purchase powers in the Shop.</p>
 
       <div class="campaign-chapter-summary" id="campaign-chapter-summary" style="display: none;" aria-label="Chapter 1 completion summary">
         <span id="campaign-chapter-summary-title">CHAPTER 1 COMPLETE</span>
@@ -1051,7 +1053,6 @@
       <div class="shop-category" id="shop-cat-powers">POWERS</div>
       <div id="power-list" class="power-list" role="region" aria-labelledby="shop-cat-powers"></div>
       <button id="btn-back-shop" class="btn btn-ghost">BACK</button>
-      <button id="btn-reset-progress" class="text-btn">RESET PROGRESS</button>
     </div>
   </section>
 
@@ -1059,7 +1060,7 @@
   <section id="screen-reset" class="screen overlay-screen" aria-labelledby="reset-title" role="dialog" aria-modal="true">
     <div class="panel reset-panel">
       <h2 id="reset-title">RESET ALL PROGRESS?</h2>
-      <p>This permanently removes all coins, upgrades, powers, achievements, tutorial completion, and best records.</p>
+      <p>This permanently removes local coins, upgrades, powers, achievements, campaign progression, stars, preferences, tutorial completion, and best records.</p>
       <button id="btn-confirm-reset" class="btn btn-secondary">CONFIRM RESET</button>
       <button id="btn-cancel-reset" class="btn btn-ghost">CANCEL</button>
     </div>
@@ -1312,6 +1313,17 @@
             <button id="btn-settings-toggle-motion" class="toggle-btn" type="button" aria-label="Toggle reduced motion preference">OFF</button>
           </div>
         </div>
+
+        <div class="settings-section settings-danger-section">
+          <div class="settings-section-title">DATA MANAGEMENT</div>
+          <div class="settings-row">
+            <div class="settings-row-copy">
+              <span class="settings-row-label">RESET PROGRESS</span>
+              <span class="settings-row-desc">Remove local campaign, economy, achievement and preference data.</span>
+            </div>
+            <button id="btn-reset-progress" class="btn btn-danger btn-tiny" type="button">RESET</button>
+          </div>
+        </div>
       </div>
 
       <button id="btn-back-settings" class="btn btn-ghost" type="button">BACK</button>
@@ -1368,9 +1380,16 @@
           <div class="settings-row">
             <div class="settings-row-copy">
               <span class="settings-row-label">ANALYTICS</span>
-              <span class="settings-row-desc">Help improve bomb generation balance (anonymous).</span>
+              <span class="settings-row-desc">After opt-in, Firebase Analytics receives level starts/results, power use and generated-bomb configuration. Firebase may also collect automatic usage and app/device information.</span>
             </div>
-            <button id="btn-toggle-analytics" class="toggle-btn" type="button" aria-label="Toggle anonymous analytics">OFF</button>
+            <button id="btn-toggle-analytics" class="toggle-btn" type="button" aria-label="Toggle gameplay analytics">OFF</button>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row-copy">
+              <span class="settings-row-label">CRASH DIAGNOSTICS</span>
+              <span class="settings-row-desc">When opted in, Sentry reports sanitized JavaScript errors. On Android, Firebase Crashlytics reports native crashes; enabling or disabling native collection takes effect on the next app launch. Opt-out deletes unsent reports where supported. Reports may include stack traces and limited browser/device context. This preference is separate from Analytics.</span>
+            </div>
+            <button id="btn-toggle-crash-reporting" class="toggle-btn" type="button" aria-label="Toggle crash diagnostics">OFF</button>
           </div>
           <div class="settings-row">
             <div class="settings-row-copy">
@@ -1378,6 +1397,9 @@
               <span class="settings-row-desc">Currently disabled in release build.</span>
             </div>
             <button id="btn-toggle-ads" class="toggle-btn" type="button" aria-label="Toggle personalized advertising">OFF</button>
+          </div>
+          <div class="settings-action-stack">
+            <button id="btn-manage-ad-privacy" class="btn btn-ghost" type="button">MANAGE AD PRIVACY OPTIONS</button>
           </div>
         </div>
 
@@ -1400,14 +1422,14 @@
   <section id="screen-delete-account" class="screen overlay-screen" aria-labelledby="delete-title" role="dialog" aria-modal="true">
     <div class="panel delete-panel">
       <h2 id="delete-title" class="danger-title">DELETE ACCOUNT?</h2>
-      <p class="delete-desc">This action will permanently remove your account records and career statistics. To confirm, please type <strong class="delete-keyword">DELETE</strong> below:</p>
+      <p class="delete-desc">For a signed-in account, we delete its cloud-save document first, then request Firebase account deletion. Local data is reset only after both steps succeed. If a remote step fails, your local data is kept and you can retry. To confirm, type <strong class="delete-keyword">DELETE</strong> below:</p>
       
       <div class="delete-input-wrap">
         <input type="text" id="input-delete-confirm" class="auth-input delete-input" placeholder="Type DELETE to confirm" autocomplete="off">
       </div>
 
       <div class="delete-warning-box">
-        <span>⚠ Local device progress will be permanently erased.</span>
+        <span>⚠ If deletion completes, local progress and the signed-in account's cloud save will be permanently removed.</span>
       </div>
 
       <div class="delete-actions">

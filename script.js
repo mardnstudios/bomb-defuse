@@ -410,6 +410,7 @@ const el = {
   settingsCloudBadge: byId("settings-cloud-badge"),
   settingsStatusVal: byId("settings-status-val"),
   btnToggleAnalytics: byId("btn-toggle-analytics"),
+  btnToggleCrashReporting: byId("btn-toggle-crash-reporting"),
   btnToggleAds: byId("btn-toggle-ads"),
   btnSettingsToggleSound: byId("btn-settings-toggle-sound"),
   btnSettingsToggleHaptics: byId("btn-settings-toggle-haptics"),
@@ -501,6 +502,14 @@ function createSeededRandom(seed) {
 /* =========================================================
    LOCAL & CLOUD SAVE MANAGERS
 ========================================================= */
+function isAnalyticsConsentAllowed(privacyValue, consentValue) {
+  return privacyValue === true && consentValue === true;
+}
+
+function isCrashReportingConsentAllowed(privacyValue, consentValue) {
+  return privacyValue === true && consentValue === true;
+}
+
 const LocalSaveManager = (() => {
   const key = "bombDefuseFirstPlayable_v1";
   let storageAvailable = true;
@@ -556,10 +565,78 @@ const LocalSaveManager = (() => {
   return { save, load, reset, isAvailable: () => storageAvailable };
 })();
 
+async function deleteAccountDataSafely({ user, deleteCloudSave, deleteAuthAccount, restoreCloudSave, resetLocal }) {
+  if (user?.uid) {
+    let cloudResult;
+    try {
+      cloudResult = await deleteCloudSave(user.uid);
+    } catch {
+      cloudResult = { status: "ERROR" };
+    }
+    if (cloudResult?.status !== "SUCCESS") {
+      return {
+        success: false,
+        stage: "cloud_delete",
+        cloudSaveDeleted: false,
+        message: "We couldn't delete your cloud save. Your account and local data were left unchanged. Check your connection and retry.",
+      };
+    }
+
+    let authResult;
+    try {
+      authResult = await deleteAuthAccount(user.uid);
+    } catch {
+      authResult = { success: false, reason: "AUTH_DELETE_FAILED" };
+    }
+    if (!authResult?.success) {
+      let restoreResult;
+      try {
+        restoreResult = await restoreCloudSave(user.uid);
+      } catch {
+        restoreResult = { status: "ERROR" };
+      }
+      const cloudSaveRestored = restoreResult?.status === "SUCCESS";
+      const recentLoginRequired = authResult?.reason === "auth/requires-recent-login";
+      return {
+        success: false,
+        stage: "auth_delete",
+        reason: authResult?.reason || "AUTH_DELETE_FAILED",
+        cloudSaveDeleted: !cloudSaveRestored,
+        cloudSaveRestored,
+        message: cloudSaveRestored
+          ? (recentLoginRequired
+            ? "Your cloud save was restored, but Firebase requires a recent sign-in to delete the account. Cancel, sign out, sign back in, then retry."
+            : "Firebase couldn't delete the account. Your cloud save and local data were restored; retry when your connection is stable.")
+          : "Account deletion is incomplete: Firebase did not delete the account and the cloud save could not be restored. Your local data remains on this device. Retry or contact support.",
+      };
+    }
+  }
+
+  try {
+    await resetLocal();
+    return { success: true, stage: "complete", cloudSaveDeleted: Boolean(user?.uid) };
+  } catch {
+    return {
+      success: false,
+      stage: "local_reset",
+      cloudSaveDeleted: Boolean(user?.uid),
+      message: "The account and cloud save were deleted, but local data could not be reset. Close and reopen the game, then check this device's saved data.",
+    };
+  }
+}
+
 const CloudSaveManager = (() => {
   let isConnected = typeof navigator !== "undefined" ? navigator.onLine : true;
   let _hasCloudSave = false;
   let activeConflictResolution = null;
+  let deletingUid = null;
+  let cloudWriteQueue = Promise.resolve();
+
+  function enqueueCloudWrite(operation) {
+    const task = cloudWriteQueue.then(operation, operation);
+    cloudWriteQueue = task.then(() => undefined, () => undefined);
+    return task;
+  }
 
   function initialize() {
     if (typeof window !== "undefined") {
@@ -574,6 +651,16 @@ const CloudSaveManager = (() => {
 
   function setHasCloudSave(val) {
     _hasCloudSave = Boolean(val);
+  }
+
+  function beginAccountDeletion(uid) {
+    if (typeof uid !== "string" || !uid || deletingUid) return false;
+    deletingUid = uid;
+    return true;
+  }
+
+  function endAccountDeletion(uid) {
+    if (deletingUid === uid) deletingUid = null;
   }
 
   function createSnapshot(data) {
@@ -789,6 +876,15 @@ const CloudSaveManager = (() => {
     let chosenSave;
     if (choice === "cloud") {
       chosenSave = SaveManager.normalize(cloudData);
+      const localSave = SaveManager.normalize(localData);
+      const analyticsAllowed = isAnalyticsConsentAllowed(localSave.privacy.analytics, localSave.consent.analytics)
+        && isAnalyticsConsentAllowed(chosenSave.privacy.analytics, chosenSave.consent.analytics);
+      chosenSave.privacy.analytics = analyticsAllowed;
+      chosenSave.consent.analytics = analyticsAllowed;
+      const crashReportingAllowed = isCrashReportingConsentAllowed(localSave.privacy.crashReporting, localSave.consent.crashReporting)
+        && isCrashReportingConsentAllowed(chosenSave.privacy.crashReporting, chosenSave.consent.crashReporting);
+      chosenSave.privacy.crashReporting = crashReportingAllowed;
+      chosenSave.consent.crashReporting = crashReportingAllowed;
     } else if (choice === "merge") {
       chosenSave = mergeSaves(localData, cloudData);
     } else {
@@ -797,15 +893,19 @@ const CloudSaveManager = (() => {
 
     profile = chosenSave;
     SaveManager.save(profile, true);
+    void AnalyticsManager.refreshConsent();
     activeConflictResolution = null;
     refreshPersistentUI();
+    AccountSettingsUI.render();
+    void SentryCrashReportingManager.refreshConsent();
+    void NativeCrashlyticsConsentManager.refreshConsent();
     updateMenuAccountBadge();
     if (typeof onResolved === "function") {
       onResolved(chosenSave);
     }
   }
 
-  async function uploadSave(saveData) {
+  async function uploadSave(saveData, expectedUid = null, allowDeletionRestore = false) {
     if (!AuthManager?.isAuthenticated?.()) {
       return { status: "GUEST_LOCAL_ONLY", message: "Guest progress is saved on this device." };
     }
@@ -816,24 +916,39 @@ const CloudSaveManager = (() => {
     if (!user || !user.uid) {
       return { status: "NO_AUTH_USER", message: "No authenticated account session." };
     }
+    if (expectedUid && user.uid !== expectedUid) {
+      return { status: "AUTH_CHANGED", message: "The signed-in account changed before synchronization completed." };
+    }
+    if (deletingUid === user.uid && !allowDeletionRestore) {
+      return { status: "ACCOUNT_DELETION_IN_PROGRESS", message: "Cloud synchronization is paused while account deletion is in progress." };
+    }
     const db = typeof FirebaseManager !== "undefined" && typeof FirebaseManager.getDb === "function" ? FirebaseManager.getDb() : (typeof window !== "undefined" && window.firebase && typeof window.firebase.firestore === "function" ? window.firebase.firestore() : null);
     if (!db) {
       return { status: "UNAVAILABLE", message: "Firestore database service is unavailable." };
     }
-    try {
-      const payload = createSnapshot(saveData || profile);
-      if (payload.account) {
-        delete payload.account.password;
-        delete payload.account.token;
-      }
-      payload.updatedAt = new Date().toISOString();
-      await db.collection("users").doc(user.uid).set(payload, { merge: true });
-      _hasCloudSave = true;
-      return { status: "SUCCESS", message: "Cloud save synchronized." };
-    } catch (err) {
-      console.warn("[CloudSaveManager] uploadSave error:", err);
-      return { status: "ERROR", message: err.message || "Failed to upload cloud save." };
+    const payload = createSnapshot(saveData || profile);
+    if (payload.account) {
+      delete payload.account.password;
+      delete payload.account.token;
     }
+    payload.updatedAt = new Date().toISOString();
+    return enqueueCloudWrite(async () => {
+      const latestUser = FirebaseManager.getCurrentUser();
+      if (!latestUser?.uid || latestUser.uid !== user.uid) {
+        return { status: "AUTH_CHANGED", message: "The signed-in account changed before synchronization completed." };
+      }
+      if (deletingUid === user.uid && !allowDeletionRestore) {
+        return { status: "ACCOUNT_DELETION_IN_PROGRESS", message: "Cloud synchronization is paused while account deletion is in progress." };
+      }
+      try {
+        await db.collection("users").doc(user.uid).set(payload, { merge: true });
+        _hasCloudSave = true;
+        return { status: "SUCCESS", message: "Cloud save synchronized." };
+      } catch (err) {
+        console.warn("[CloudSaveManager] uploadSave error:", err?.code || "UNKNOWN");
+        return { status: "ERROR", message: "Cloud save synchronization failed." };
+      }
+    });
   }
 
   async function downloadSave() {
@@ -844,6 +959,7 @@ const CloudSaveManager = (() => {
     if (!user || !user.uid) {
       return { status: "NO_AUTH_USER" };
     }
+    if (deletingUid === user.uid) return { status: "ACCOUNT_DELETION_IN_PROGRESS" };
     const db = typeof FirebaseManager !== "undefined" && typeof FirebaseManager.getDb === "function" ? FirebaseManager.getDb() : (typeof window !== "undefined" && window.firebase && typeof window.firebase.firestore === "function" ? window.firebase.firestore() : null);
     if (!db) {
       return { status: "UNAVAILABLE" };
@@ -862,9 +978,54 @@ const CloudSaveManager = (() => {
     }
   }
 
+  async function deleteUserSave(expectedUid) {
+    const user = typeof FirebaseManager !== "undefined" ? FirebaseManager.getCurrentUser() : null;
+    if (!user?.uid) {
+      return { status: "NO_AUTH_USER", message: "Sign in again before deleting your cloud save." };
+    }
+    if (!expectedUid || user.uid !== expectedUid) {
+      return { status: "AUTH_CHANGED", message: "The signed-in account changed. No cloud data was deleted." };
+    }
+    if (deletingUid !== user.uid) {
+      return { status: "DELETE_NOT_LOCKED", message: "Account deletion was not initialized. No cloud data was deleted." };
+    }
+    if (!isConnected || (typeof navigator !== "undefined" && !navigator.onLine)) {
+      return { status: "OFFLINE", message: "Connect to the internet and retry account deletion." };
+    }
+    const db = typeof FirebaseManager !== "undefined" && typeof FirebaseManager.getDb === "function"
+      ? FirebaseManager.getDb()
+      : null;
+    if (!db) {
+      return { status: "UNAVAILABLE", message: "Cloud storage is unavailable. Your account and local data were not deleted." };
+    }
+    return enqueueCloudWrite(async () => {
+      const latestUser = FirebaseManager.getCurrentUser();
+      if (!latestUser?.uid || latestUser.uid !== user.uid || deletingUid !== user.uid) {
+        return { status: "AUTH_CHANGED", message: "The signed-in account changed. No cloud data was deleted." };
+      }
+      try {
+        // The only user-owned Firestore path used by this app is users/{authenticated UID}.
+        await db.collection("users").doc(user.uid).delete();
+        _hasCloudSave = false;
+        return { status: "SUCCESS" };
+      } catch (err) {
+        console.warn("[CloudSaveManager] User cloud-save deletion failed:", err?.code || "UNKNOWN");
+        return {
+          status: "ERROR",
+          reason: err?.code || "FIRESTORE_DELETE_FAILED",
+          message: "We couldn't delete your cloud save. Your account and local data were left unchanged. Check your connection and retry.",
+        };
+      }
+    });
+  }
+
   async function sync() {
     if (!AuthManager?.isAuthenticated?.() || !isConnected) {
       return { status: "LOCAL_SOURCE_OF_TRUTH" };
+    }
+    const currentUser = FirebaseManager.getCurrentUser();
+    if (currentUser?.uid && deletingUid === currentUser.uid) {
+      return { status: "ACCOUNT_DELETION_IN_PROGRESS" };
     }
     try {
       const res = await downloadSave();
@@ -872,9 +1033,13 @@ const CloudSaveManager = (() => {
         const cloudData = res.data;
         _hasCloudSave = true;
         profile = mergeSaves(profile, cloudData);
+        void AnalyticsManager.refreshConsent();
+        void SentryCrashReportingManager.refreshConsent();
+        void NativeCrashlyticsConsentManager.refreshConsent();
         LocalSaveManager.save(profile);
         await uploadSave(profile);
         refreshPersistentUI();
+        AccountSettingsUI.render();
         updateMenuAccountBadge();
         DailyGoalsManager.updateBadge();
         AchievementUI.updateBadge();
@@ -895,6 +1060,8 @@ const CloudSaveManager = (() => {
     initialize,
     hasCloudSave,
     setHasCloudSave,
+    beginAccountDeletion,
+    endAccountDeletion,
     createSnapshot,
     detectConflict,
     showConflictModal,
@@ -902,6 +1069,7 @@ const CloudSaveManager = (() => {
     resolveConflict,
     uploadSave,
     downloadSave,
+    deleteUserSave,
     sync,
     get isConnected() { return isConnected; }
   };
@@ -973,11 +1141,13 @@ const SaveManager = (() => {
     sessionMilestones: {},
     privacy: {
       analytics: false,
+      crashReporting: false,
       personalizedAds: false,
     },
     consent: {
       essential: true,
       analytics: false,
+      crashReporting: false,
       personalizedAds: false,
     },
     achievements: {
@@ -1120,15 +1290,19 @@ const SaveManager = (() => {
     };
 
     const privIn = (incoming.privacy && typeof incoming.privacy === "object" && !Array.isArray(incoming.privacy)) ? incoming.privacy : {};
+    const consIn = (incoming.consent && typeof incoming.consent === "object" && !Array.isArray(incoming.consent)) ? incoming.consent : {};
+    const analyticsAllowed = isAnalyticsConsentAllowed(privIn.analytics, consIn.analytics);
+    const crashReportingAllowed = isCrashReportingConsentAllowed(privIn.crashReporting, consIn.crashReporting);
     base.privacy = {
-      analytics: Boolean(privIn.analytics),
+      analytics: analyticsAllowed,
+      crashReporting: crashReportingAllowed,
       personalizedAds: Boolean(privIn.personalizedAds),
     };
 
-    const consIn = (incoming.consent && typeof incoming.consent === "object" && !Array.isArray(incoming.consent)) ? incoming.consent : {};
     base.consent = {
       essential: true,
-      analytics: Boolean(consIn.analytics),
+      analytics: analyticsAllowed,
+      crashReporting: crashReportingAllowed,
       personalizedAds: Boolean(consIn.personalizedAds),
     };
 
@@ -1320,9 +1494,6 @@ const AudioManager = (() => {
 
   function getContext() {
     if (!ctx) initContext();
-    if (ctx && ctx.state === "suspended") {
-      ctx.resume().catch(() => {});
-    }
     return ctx;
   }
 
@@ -2193,6 +2364,12 @@ const PowerManager = (() => {
     updatePowerUI();
 
     if (run) run.powerUsedOnRun = true;
+    if (run?.analyticsAttemptId) {
+      run.analyticsPowerUseCount = (run.analyticsPowerUseCount || 0) + 1;
+      AnalyticsManager.logGameplayEvent("power_used", run.analyticsAttemptId, `power-${run.analyticsPowerUseCount}`, {
+        power_type: id
+      });
+    }
     try {
       if (typeof HapticsManager !== "undefined" && typeof HapticsManager.powerActivate === "function") {
         HapticsManager.powerActivate();
@@ -2922,6 +3099,7 @@ function showScreen(name) {
       target.setAttribute("aria-hidden", "false");
     }
   }
+  window.BombDefuseAdMobService?.setScreen(name);
 }
 function later(callback, milliseconds) { const id = setTimeout(() => { pendingTimeouts.delete(id); callback(); }, milliseconds); pendingTimeouts.add(id); return id; }
 function clearPendingTransitions() { pendingTimeouts.forEach(id => clearTimeout(id)); pendingTimeouts.clear(); }
@@ -4135,6 +4313,29 @@ const FIREBASE_CONFIG = {
   measurementId: "G-8TV39CN4V9"
 };
 
+const BOMB_DEFUSE_BUILD_CONFIG = (typeof window !== "undefined"
+  && window.__BOMB_DEFUSE_BUILD_CONFIG__
+  && typeof window.__BOMB_DEFUSE_BUILD_CONFIG__ === "object")
+  ? window.__BOMB_DEFUSE_BUILD_CONFIG__
+  : null;
+const IS_LOCAL_DEVELOPMENT_HOST = location.hostname === "localhost"
+  || location.hostname === "127.0.0.1"
+  || location.protocol === "file:";
+
+// The Sentry DSN is a public client identifier, not an authentication token.
+// Leave empty until the development project's DSN is configured.
+const SENTRY_CONFIG = {
+  dsn: "https://6d31f9c1f4668513e38c2be99c7a197a@o4512237308870656.ingest.de.sentry.io/4512237325910096",
+  release: "",
+  environment: BOMB_DEFUSE_BUILD_CONFIG?.sentryEnvironment === "production"
+    || BOMB_DEFUSE_BUILD_CONFIG?.sentryEnvironment === "development"
+    ? BOMB_DEFUSE_BUILD_CONFIG.sentryEnvironment
+    : (IS_LOCAL_DEVELOPMENT_HOST ? "development" : "production"),
+  developmentTools: typeof BOMB_DEFUSE_BUILD_CONFIG?.allowDevelopmentTestHelper === "boolean"
+    ? BOMB_DEFUSE_BUILD_CONFIG.allowDevelopmentTestHelper
+    : IS_LOCAL_DEVELOPMENT_HOST,
+};
+
 const FirebaseManager = (() => {
   let app = null;
   let auth = null;
@@ -4370,10 +4571,13 @@ const FirebaseManager = (() => {
     }
   }
 
-  async function deleteAccount() {
-    const active = currentUser || (auth ? auth.currentUser : null);
+  async function deleteAccount(expectedUid) {
+    const active = auth ? auth.currentUser : currentUser;
     if (!active) {
-      return { success: true, message: "No active Firebase session to delete." };
+      return { success: false, reason: "AUTH_SESSION_MISSING", message: "Your Firebase sign-in session is unavailable. Sign in again and retry." };
+    }
+    if (!expectedUid || active.uid !== expectedUid) {
+      return { success: false, reason: "AUTH_USER_CHANGED", message: "The signed-in account changed. No account was deleted." };
     }
     try {
       await active.delete();
@@ -4398,7 +4602,7 @@ const FirebaseManager = (() => {
     sendPasswordReset,
     signOut,
     deleteAccount,
-    getCurrentUser: () => currentUser || (auth ? auth.currentUser : null),
+    getCurrentUser: () => auth ? auth.currentUser : currentUser,
   };
 })();
 
@@ -4494,6 +4698,7 @@ const GuestAuthProvider = {
    AUTH MANAGER (MAIN ACCOUNT INTERFACE)
 ========================================================= */
 const AuthManager = (() => {
+  let accountDeletionInProgress = false;
   const providers = {
     google: GoogleAuthProvider,
     facebook: FacebookAuthProvider,
@@ -4559,6 +4764,7 @@ const AuthManager = (() => {
       }
 
       refreshPersistentUI();
+      AccountSettingsUI.render();
       updateMenuAccountBadge();
       updateNetworkBadge();
       DailyGoalsManager.updateBadge();
@@ -4713,21 +4919,59 @@ const AuthManager = (() => {
   }
 
   async function deleteAccount() {
-    if (isAuthenticated()) {
-      const res = await FirebaseManager.deleteAccount();
-      if (!res.success && res.reason === "auth/requires-recent-login") {
-        showToast("PLEASE SIGN IN AGAIN BEFORE DELETING ACCOUNT", "danger");
-        return;
-      }
+    if (accountDeletionInProgress) {
+      return { success: false, stage: "in_progress", message: "Account deletion is already in progress." };
     }
-    profile = SaveManager.reset();
-    AudioManager.playLogout();
-    HapticsManager.logout();
-    refreshPersistentUI();
-    updateMenuAccountBadge();
-    DailyGoalsManager.updateBadge();
-    showToast("ACCOUNT AND LOCAL DATA DELETED", "danger");
-    showScreen("menu");
+    accountDeletionInProgress = true;
+    let deletionLockUid = null;
+    try {
+      const firebaseUser = FirebaseManager.getCurrentUser();
+      const registeredProfile = profile.account?.mode === "registered";
+      if (registeredProfile && !firebaseUser?.uid) {
+        return { success: false, stage: "auth_session", message: "Your Firebase sign-in session is unavailable. Your account and local data were not deleted. Sign in again and retry." };
+      }
+      if (firebaseUser?.uid && (!registeredProfile || profile.account?.userId !== firebaseUser.uid)) {
+        return { success: false, stage: "auth_session", message: "The signed-in account does not match this local profile. No data was deleted. Reopen the account and retry." };
+      }
+
+      const deletionUser = firebaseUser?.uid ? { uid: firebaseUser.uid } : null;
+      if (deletionUser) {
+        if (!CloudSaveManager.beginAccountDeletion(deletionUser.uid)) {
+          return { success: false, stage: "in_progress", message: "Cloud synchronization is already stopping for this account. Retry in a moment." };
+        }
+        deletionLockUid = deletionUser.uid;
+      }
+      const localSnapshot = CloudSaveManager.createSnapshot(profile);
+      const result = await deleteAccountDataSafely({
+        user: deletionUser,
+        deleteCloudSave: uid => CloudSaveManager.deleteUserSave(uid),
+        deleteAuthAccount: uid => FirebaseManager.deleteAccount(uid),
+        restoreCloudSave: uid => CloudSaveManager.uploadSave(localSnapshot, uid, true),
+        resetLocal: () => {
+          profile = SaveManager.reset();
+          AnalyticsManager.refreshConsent();
+          SentryCrashReportingManager.refreshConsent();
+          void NativeCrashlyticsConsentManager.refreshConsent();
+          AudioManager.playLogout();
+          HapticsManager.logout();
+          refreshPersistentUI();
+          updateMenuAccountBadge();
+          DailyGoalsManager.updateBadge();
+        },
+      });
+
+      if (!result.success) return result;
+      showToast(result.cloudSaveDeleted
+        ? "ACCOUNT, CLOUD SAVE, AND LOCAL DATA DELETED"
+        : "LOCAL GAME DATA DELETED", "success", 5000);
+      showScreen("menu");
+      return result;
+    } catch {
+      return { success: false, stage: "unexpected", message: "Account deletion did not complete. Your local data was kept when possible; retry or contact support." };
+    } finally {
+      if (deletionLockUid) CloudSaveManager.endAccountDeletion(deletionLockUid);
+      accountDeletionInProgress = false;
+    }
   }
 
   return {
@@ -4754,43 +4998,296 @@ const AuthManager = (() => {
    PHASE 9A: ANALYTICS INTEGRATION BOUNDARY
 ========================================================= */
 const AnalyticsManager = (() => {
-  let isInitialized = false;
+  const ANALYTICS_SDK_URL = "https://www.gstatic.com/firebasejs/10.14.1/firebase-analytics-compat.js";
+  const MAX_PENDING_EVENTS = 64;
+  const PUZZLE_TYPES = new Set([
+    "wire_defusal", "circuit_flow", "signal_memory", "combination",
+    "word_puzzle", "circuit_overload", "signal_order", "final_protocol"
+  ]);
+  const DIFFICULTIES = new Set(["easy", "normal", "hard", "very_hard", "extreme"]);
+  const RULE_TYPES = new Set([
+    "color", "position", "length", "relation", "combination", "memory", "master",
+    "signal", "led", "adjacency", "order", "onlyColor", "count"
+  ]);
+  const POWER_TYPES = new Set(["scanner", "timeSlow", "timeFreeze", "secondChance"]);
+  const EVENT_SCHEMAS = {
+    level_started: {
+      level_id: value => Number.isInteger(value) && value >= 1 && value <= 10 ? value : null,
+      puzzle_type: value => PUZZLE_TYPES.has(value) ? value : null
+    },
+    level_completed: {
+      level_id: value => Number.isInteger(value) && value >= 1 && value <= 10 ? value : null,
+      puzzle_type: value => PUZZLE_TYPES.has(value) ? value : null,
+      duration_seconds: value => Number.isFinite(value) && value >= 0 && value <= 3600 ? Math.round(value * 10) / 10 : null,
+      stars_earned: value => Number.isInteger(value) && value >= 0 && value <= 3 ? value : null
+    },
+    level_failed: {
+      level_id: value => Number.isInteger(value) && value >= 1 && value <= 10 ? value : null,
+      puzzle_type: value => PUZZLE_TYPES.has(value) ? value : null,
+      duration_seconds: value => Number.isFinite(value) && value >= 0 && value <= 3600 ? Math.round(value * 10) / 10 : null
+    },
+    power_used: {
+      power_type: value => POWER_TYPES.has(value) ? value : null
+    },
+    bomb_generation_result: {
+      difficulty: value => DIFFICULTIES.has(value) ? value : null,
+      wire_count: value => Number.isInteger(value) && value >= 3 && value <= 8 ? value : null,
+      phase_count: value => Number.isInteger(value) && value >= 1 && value <= 3 ? value : null,
+      rule_type: value => RULE_TYPES.has(value) ? value : null
+    }
+  };
+
+  let analyticsSdkPromise = null;
+  let cancelAnalyticsSdkLoad = null;
+  let analyticsInstance = null;
+  let collectionEnabled = false;
+  let initializationPromise = null;
+  let initializationGeneration = -1;
+  let consentGeneration = 0;
+  let consentWasEnabled = false;
+  let failedGeneration = -1;
+  let nextAttemptId = 0;
+  const transitionKeysByAttempt = new WeakMap();
+  let pendingEvents = [];
 
   function isEnabled() {
     return Boolean(ConsentManager && ConsentManager.hasConsent("analytics"));
   }
 
-  function initialize() {
-    if (isInitialized) return;
-    isInitialized = true;
+  function puzzleTypeForLevel(levelDef) {
+    const types = {
+      FREE_FLOW: "circuit_flow",
+      SIGNAL_MEMORY: "signal_memory",
+      COMBINATION: "combination",
+      WORD_PUZZLE: "word_puzzle",
+      CIRCUIT_OVERLOAD: "circuit_overload",
+      SIGNAL_ORDER: "signal_order",
+      FINAL_PROTOCOL: "final_protocol"
+    };
+    return types[levelDef?.gameplayType] || "wire_defusal";
   }
 
-  function logEvent(eventName, params = {}) {
-    if (!isEnabled()) return;
-    if (typeof eventName !== "string" || !eventName) return;
+  function sanitizeEvent(eventName, params) {
+    if (typeof eventName !== "string" || !Object.prototype.hasOwnProperty.call(EVENT_SCHEMAS, eventName)) return null;
+    const schema = EVENT_SCHEMAS[eventName];
+    if (!schema || !params || typeof params !== "object" || Array.isArray(params)) return null;
 
-    // Strict privacy protection: strip sensitive keys
-    const sanitizedParams = {};
-    const sensitiveKeys = ["password", "token", "credential", "apikey", "secret", "email", "location", "lat", "lng", "contact"];
-    Object.entries(params).forEach(([k, v]) => {
-      const lower = k.toLowerCase();
-      if (!sensitiveKeys.some(sk => lower.includes(sk))) {
-        if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") {
-          sanitizedParams[k] = v;
+    const safe = {};
+    for (const [key, validate] of Object.entries(schema)) {
+      if (!Object.prototype.hasOwnProperty.call(params, key)) return null;
+      const value = validate(params[key]);
+      if (value === null) return null;
+      safe[key] = value;
+    }
+    return safe;
+  }
+
+  function hasDefaultFirebaseApp() {
+    return Boolean(window.firebase?.apps?.some(app => app.name === "[DEFAULT]"));
+  }
+
+  function loadAnalyticsSdk() {
+    if (!isEnabled()) return Promise.resolve(false);
+    if (typeof window.firebase?.analytics === "function") return Promise.resolve(true);
+    if (analyticsSdkPromise) return analyticsSdkPromise;
+
+    analyticsSdkPromise = new Promise(resolve => {
+      const script = document.createElement("script");
+      let settled = false;
+      let timeoutId = null;
+
+      const finish = loaded => {
+        if (settled) return;
+        settled = true;
+        if (timeoutId !== null) window.clearTimeout(timeoutId);
+        cancelAnalyticsSdkLoad = null;
+        if (!loaded) {
+          script.remove();
+          analyticsSdkPromise = null;
         }
-      }
+        resolve(Boolean(loaded && typeof window.firebase?.analytics === "function"));
+      };
+
+      script.id = "firebase-analytics-compat-sdk";
+      script.src = ANALYTICS_SDK_URL;
+      script.async = true;
+      script.onload = () => finish(typeof window.firebase?.analytics === "function");
+      script.onerror = () => finish(false);
+      cancelAnalyticsSdkLoad = () => finish(false);
+      timeoutId = window.setTimeout(() => finish(false), 10000);
+      document.head.appendChild(script);
     });
 
+    return analyticsSdkPromise;
+  }
+
+  function disableCollection() {
+    pendingEvents = [];
+    collectionEnabled = false;
+    if (cancelAnalyticsSdkLoad) cancelAnalyticsSdkLoad();
     try {
-      if (typeof window !== "undefined" && window.firebase && typeof window.firebase.analytics === "function") {
-        window.firebase.analytics().logEvent(eventName, sanitizedParams);
+      if (FIREBASE_CONFIG.measurementId) {
+        window[`ga-disable-${FIREBASE_CONFIG.measurementId}`] = true;
       }
-    } catch (err) {
-      // Non-blocking telemetry
+    } catch {}
+    if (!analyticsInstance) return;
+
+    try {
+      analyticsInstance.setAnalyticsCollectionEnabled(false);
+    } catch {
+      // The wrapper remains closed even if the SDK cannot disable itself.
     }
   }
 
-  return { initialize, isEnabled, logEvent };
+  function sendEvent(eventName, params) {
+    if (!isEnabled() || !collectionEnabled || !analyticsInstance) return false;
+    try {
+      analyticsInstance.logEvent(eventName, params);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function flushPendingEvents(generation) {
+    const queued = pendingEvents;
+    pendingEvents = [];
+    queued.forEach(item => {
+      if (item.generation === generation && isEnabled()) {
+        sendEvent(item.eventName, item.params);
+      }
+    });
+  }
+
+  async function initializeForConsent(generation) {
+    try {
+      const loaded = await loadAnalyticsSdk();
+      if (!loaded) {
+        if (isEnabled() && generation === consentGeneration) {
+          failedGeneration = generation;
+          pendingEvents = [];
+        }
+        return false;
+      }
+      if (!isEnabled() || generation !== consentGeneration) return false;
+      if (!hasDefaultFirebaseApp()) {
+        failedGeneration = generation;
+        pendingEvents = [];
+        disableCollection();
+        return false;
+      }
+
+      const analyticsApi = window.firebase.analytics;
+      if (typeof analyticsApi.isSupported !== "function" || !await analyticsApi.isSupported()) {
+        failedGeneration = generation;
+        pendingEvents = [];
+        disableCollection();
+        return false;
+      }
+      if (!isEnabled() || generation !== consentGeneration) return false;
+
+      const instance = analyticsApi();
+      if (!instance || typeof instance.logEvent !== "function" || typeof instance.setAnalyticsCollectionEnabled !== "function") {
+        failedGeneration = generation;
+        pendingEvents = [];
+        disableCollection();
+        return false;
+      }
+
+      // SDK startup (including automatic events) occurs only after valid opt-in.
+      analyticsInstance = instance;
+      instance.setAnalyticsCollectionEnabled(true);
+      if (!isEnabled() || generation !== consentGeneration) {
+        disableCollection();
+        return false;
+      }
+      collectionEnabled = true;
+      flushPendingEvents(generation);
+      return true;
+    } catch {
+      failedGeneration = generation;
+      pendingEvents = [];
+      disableCollection();
+      return false;
+    }
+  }
+
+  function refreshConsent() {
+    if (!isEnabled()) {
+      if (consentWasEnabled) consentGeneration += 1;
+      consentWasEnabled = false;
+      disableCollection();
+      return Promise.resolve(false);
+    }
+
+    if (!consentWasEnabled) {
+      consentGeneration += 1;
+      consentWasEnabled = true;
+    }
+    // The Google tag honors this global kill switch independently of the Firebase
+    // wrapper. Clear it only after the authoritative consent check above succeeds.
+    try {
+      if (FIREBASE_CONFIG.measurementId) {
+        window[`ga-disable-${FIREBASE_CONFIG.measurementId}`] = false;
+      }
+    } catch {}
+    const generation = consentGeneration;
+    if (analyticsInstance && collectionEnabled) return Promise.resolve(true);
+    if (failedGeneration === generation) return Promise.resolve(false);
+    if (initializationPromise) {
+      if (initializationGeneration === generation) return initializationPromise;
+      return initializationPromise.then(() => refreshConsent(), () => refreshConsent());
+    }
+
+    initializationGeneration = generation;
+    initializationPromise = initializeForConsent(generation);
+    const currentPromise = initializationPromise;
+    currentPromise.then(() => {
+      if (initializationPromise === currentPromise) {
+        initializationPromise = null;
+        initializationGeneration = -1;
+      }
+    }, () => {
+      if (initializationPromise === currentPromise) {
+        initializationPromise = null;
+        initializationGeneration = -1;
+      }
+    });
+    return currentPromise;
+  }
+
+  function initialize() {
+    return refreshConsent();
+  }
+
+  function logGameplayEvent(eventName, attempt, transitionKey, params) {
+    const safeParams = sanitizeEvent(eventName, params);
+    if (!safeParams || !attempt || typeof attempt !== "object" || typeof transitionKey !== "string") return false;
+
+    let transitionKeys = transitionKeysByAttempt.get(attempt);
+    if (!transitionKeys) {
+      transitionKeys = new Set();
+      transitionKeysByAttempt.set(attempt, transitionKeys);
+    }
+    if (transitionKeys.has(transitionKey)) return false;
+    transitionKeys.add(transitionKey);
+
+    // Suppressed transitions are consumed, not queued for a later opt-in.
+    if (!isEnabled()) return false;
+    if (analyticsInstance && collectionEnabled) return sendEvent(eventName, safeParams);
+    if (failedGeneration === consentGeneration || pendingEvents.length >= MAX_PENDING_EVENTS) return false;
+
+    pendingEvents.push({ eventName, params: safeParams, generation: consentGeneration });
+    void refreshConsent();
+    return true;
+  }
+
+  function beginAttempt() {
+    nextAttemptId += 1;
+    return { analyticsAttemptId: nextAttemptId };
+  }
+
+  return { initialize, isEnabled, refreshConsent, beginAttempt, puzzleTypeForLevel, logGameplayEvent };
 })();
 
 /* =========================================================
@@ -4799,19 +5296,691 @@ const AnalyticsManager = (() => {
 const ConsentManager = (() => {
   function hasConsent(type) {
     if (type === "essential") return true;
+    if (type === "analytics") {
+      return isAnalyticsConsentAllowed(profile?.privacy?.analytics, profile?.consent?.analytics);
+    }
+    if (type === "crashReporting") {
+      return isCrashReportingConsentAllowed(profile?.privacy?.crashReporting, profile?.consent?.crashReporting);
+    }
     return Boolean(profile?.consent?.[type]);
   }
 
   function setConsent(type, val) {
     if (type === "essential") return;
-    if (!profile.consent) profile.consent = { essential: true, analytics: false, personalizedAds: false };
-    if (!profile.privacy) profile.privacy = { analytics: false, personalizedAds: false };
-    profile.consent[type] = Boolean(val);
-    profile.privacy[type] = Boolean(val);
+    if (!profile.consent) profile.consent = { essential: true, analytics: false, crashReporting: false, personalizedAds: false };
+    if (!profile.privacy) profile.privacy = { analytics: false, crashReporting: false, personalizedAds: false };
+    const allowed = type === "crashReporting" ? val === true : (type === "analytics" ? val === true : Boolean(val));
+    profile.consent[type] = allowed;
+    profile.privacy[type] = allowed;
     SaveManager.save(profile);
+    if (type === "analytics") void AnalyticsManager.refreshConsent();
+    if (type === "crashReporting") {
+      void SentryCrashReportingManager.refreshConsent();
+      return NativeCrashlyticsConsentManager.setExplicitConsent(allowed);
+    }
   }
 
   return { hasConsent, setConsent };
+})();
+
+/* =========================================================
+   PHASE 2: CONSENT-GATED SENTRY BROWSER REPORTING
+========================================================= */
+const SentryCrashReportingManager = (() => {
+  const SDK_URL = "https://browser.sentry-cdn.com/11.1.0/bundle.min.js";
+  const SDK_SCRIPT_ID = "sentry-browser-sdk";
+  const LOAD_TIMEOUT_MS = 12000;
+  const isDevelopment = SENTRY_CONFIG.developmentTools === true;
+
+  let consentGeneration = 0;
+  let consentWasEnabled = false;
+  let sdkLoad = null;
+  let initialization = null;
+  let initializationGeneration = -1;
+  let activeSession = null;
+  const seenErrors = new WeakSet();
+
+  function diagnostic(level, message) {
+    if (!isDevelopment || !/^(info|warn|error)$/.test(level)) return;
+    console[level](`[Sentry] ${message}`);
+  }
+
+  function hasConsent() {
+    return Boolean(ConsentManager && ConsentManager.hasConsent("crashReporting"));
+  }
+
+  function hasDsn() {
+    return typeof SENTRY_CONFIG.dsn === "string" && SENTRY_CONFIG.dsn.trim().length > 0;
+  }
+
+  function isSessionAllowed(session, generation = session?.generation) {
+    return Boolean(
+      session &&
+      session.active &&
+      session.generation === generation &&
+      consentGeneration === generation &&
+      hasConsent() &&
+      hasDsn()
+    );
+  }
+
+  function loadSdk(generation) {
+    if (!hasConsent() || !hasDsn() || generation !== consentGeneration) return Promise.resolve(null);
+    if (typeof window.Sentry?.init === "function"
+      && typeof window.Sentry?.createTransport === "function"
+      && typeof window.Sentry?.captureException === "function"
+      && typeof window.Sentry?.flush === "function") {
+      return Promise.resolve(window.Sentry);
+    }
+    if (sdkLoad) return sdkLoad.promise;
+
+    const script = document.createElement("script");
+    script.id = SDK_SCRIPT_ID;
+    script.src = SDK_URL;
+    script.async = true;
+    script.crossOrigin = "anonymous";
+
+    let resolveLoad;
+    let settled = false;
+    let timeoutId = null;
+    const record = { promise: null, cancel: null };
+    const finish = api => {
+      if (settled) return;
+      settled = true;
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      script.onload = null;
+      script.onerror = null;
+      if (sdkLoad === record) sdkLoad = null;
+      if (!api) script.remove();
+      resolveLoad(api);
+    };
+
+    record.promise = new Promise(resolve => { resolveLoad = resolve; });
+    record.cancel = () => finish(null);
+    sdkLoad = record;
+    script.onload = () => finish(
+      typeof window.Sentry?.init === "function"
+      && typeof window.Sentry?.createTransport === "function"
+      && typeof window.Sentry?.captureException === "function"
+      && typeof window.Sentry?.flush === "function"
+        ? window.Sentry
+        : null
+    );
+    script.onerror = () => finish(null);
+    timeoutId = window.setTimeout(() => finish(null), LOAD_TIMEOUT_MS);
+    document.head.appendChild(script);
+    return record.promise;
+  }
+
+  function cancelSdkLoad() {
+    if (sdkLoad) sdkLoad.cancel();
+  }
+
+  function errorIdsFromEnvelope(envelope) {
+    if (!Array.isArray(envelope) || !Array.isArray(envelope[1])) return [];
+    return envelope[1].flatMap(item => {
+      const headers = item?.[0];
+      const payload = item?.[1];
+      return headers?.type === "event" && typeof payload?.event_id === "string"
+        ? [payload.event_id]
+        : [];
+    });
+  }
+
+  function createConsentTransport(api, options, session) {
+    const inFlight = new Set();
+    const pendingTasks = new Set();
+    let envelopeContext = null;
+
+    function cancelPending() {
+      inFlight.forEach(controller => controller.abort());
+      inFlight.clear();
+      pendingTasks.clear();
+    }
+
+    async function makeRequest(request) {
+      const context = session.requestContext;
+      if (!context || !isSessionAllowed(session, context.generation)) {
+        diagnostic("warn", "Transport request rejected by the consent/event gate.");
+        return { statusCode: 204 };
+      }
+
+      const controller = new AbortController();
+      inFlight.add(controller);
+      if (!isSessionAllowed(session, context.generation)) {
+        controller.abort();
+        inFlight.delete(controller);
+        diagnostic("warn", "Transport request canceled before send because consent is inactive.");
+        return { statusCode: 204 };
+      }
+
+      context.eventIds.forEach(id => {
+        const delivery = session.testDeliveries.get(id);
+        if (delivery) delivery.requestStarted = true;
+      });
+      diagnostic("info", "Sentry ingest request started.");
+
+      try {
+        const response = await fetch(options.url, {
+          method: "POST",
+          body: request.body,
+          headers: options.headers,
+          credentials: "omit",
+          referrerPolicy: "strict-origin",
+          keepalive: false,
+          signal: controller.signal,
+        });
+        const accepted = response.status >= 200 && response.status < 300;
+        context.eventIds.forEach(id => {
+          const delivery = session.testDeliveries.get(id);
+          if (!delivery) return;
+          delivery.httpStatus = response.status;
+          delivery.serverAccepted = accepted;
+        });
+        diagnostic(accepted ? "info" : "warn", `Sentry ingest response status ${response.status}; serverAccepted=${accepted}.`);
+        return {
+          statusCode: response.status,
+          headers: {
+            "x-sentry-rate-limits": response.headers.get("X-Sentry-Rate-Limits"),
+            "retry-after": response.headers.get("Retry-After"),
+          },
+        };
+      } catch (error) {
+        if (!isSessionAllowed(session, context.generation)) {
+          diagnostic("warn", "Pending Sentry transport was discarded after consent changed.");
+          return { statusCode: 204 };
+        }
+        context.eventIds.forEach(id => {
+          const delivery = session.testDeliveries.get(id);
+          if (delivery) delivery.transportError = true;
+        });
+        diagnostic("error", "Sentry ingest request failed; request and event details were not logged.");
+        throw error;
+      } finally {
+        inFlight.delete(controller);
+      }
+    }
+
+    // This buffer starts each allowed transport task immediately; it never stores
+    // reports for offline delivery or for a future consent decision.
+    const noQueueBuffer = {
+      add(task) {
+        const context = envelopeContext;
+        if (!context || !isSessionAllowed(session, context.generation)) {
+          diagnostic("warn", "Transport task rejected before request because consent/event context was unavailable.");
+          return Promise.resolve({ statusCode: 204 });
+        }
+
+        const taskPromise = Promise.resolve().then(() => {
+          if (!isSessionAllowed(session, context.generation)) {
+            diagnostic("warn", "Transport task discarded before request because consent changed.");
+            return { statusCode: 204 };
+          }
+          diagnostic("info", "Sentry transport task invoked.");
+          session.requestContext = context;
+          try {
+            return task();
+          } finally {
+            session.requestContext = null;
+          }
+        });
+        pendingTasks.add(taskPromise);
+        taskPromise.then(() => pendingTasks.delete(taskPromise), () => pendingTasks.delete(taskPromise));
+        return taskPromise;
+      },
+      drain(timeout) {
+        if (!isSessionAllowed(session)) {
+          cancelPending();
+          return Promise.resolve(true);
+        }
+        const completed = Promise.all([...pendingTasks]).then(() => true, () => false);
+        if (!Number.isFinite(timeout) || timeout < 0) return completed;
+        return Promise.race([completed, new Promise(resolve => window.setTimeout(() => resolve(false), timeout))]);
+      },
+    };
+
+    const innerTransport = api.createTransport(options, makeRequest, noQueueBuffer);
+    return {
+      send(envelope) {
+        const eventIds = errorIdsFromEnvelope(envelope);
+        const generation = session.generation;
+        diagnostic("info", "Sentry transport send invoked.");
+        if (!isSessionAllowed(session, generation)) {
+          diagnostic("warn", "Envelope rejected before transport because consent/session is inactive.");
+          return Promise.resolve({ statusCode: 204 });
+        }
+        if (eventIds.length === 0) diagnostic("warn", "Envelope has no correlatable event ID; sending under the active consented session.");
+
+        envelopeContext = { generation, eventIds };
+        let result;
+        try {
+          result = innerTransport.send(envelope);
+        } finally {
+          envelopeContext = null;
+        }
+        return Promise.resolve(result).catch(error => {
+          diagnostic("error", "Sentry transport rejected the send operation; no event details were logged.");
+          throw error;
+        }).finally(() => {
+          eventIds.forEach(id => session.testDeliveries.delete(id));
+        });
+      },
+      flush(timeout) {
+        if (!isSessionAllowed(session)) {
+          cancelPending();
+          return Promise.resolve(true);
+        }
+        return innerTransport.flush(timeout);
+      },
+      dropPending: cancelPending,
+    };
+  }
+
+  function sanitizeFrame(frame) {
+    const safe = {};
+    if (typeof frame.filename === "string") {
+      try {
+        const url = new URL(frame.filename, window.location.href);
+        url.search = "";
+        url.hash = "";
+        safe.filename = url.href;
+      } catch {
+        safe.filename = frame.filename.split(/[?#]/, 1)[0];
+      }
+    }
+    if (Number.isInteger(frame.lineno)) safe.lineno = frame.lineno;
+    if (Number.isInteger(frame.colno)) safe.colno = frame.colno;
+    if (typeof frame.in_app === "boolean") safe.in_app = frame.in_app;
+    return safe;
+  }
+
+  function sanitizeEvent(event, session, hint) {
+    const testDelivery = session.testDeliveries.get(event.event_id)
+      || session.testErrors.get(hint?.originalException);
+    if (testDelivery) session.testDeliveries.set(event.event_id, testDelivery);
+    if (!isSessionAllowed(session)) {
+      if (testDelivery) testDelivery.rejectedByBeforeSend = true;
+      diagnostic("warn", "Event rejected by the consent/session gate.");
+      return null;
+    }
+
+    delete event.user;
+    delete event.request;
+    delete event.extra;
+    delete event.logentry;
+    event.tags = {};
+    event.message = undefined;
+    event.breadcrumbs = [];
+
+    const allowedContexts = {};
+    for (const key of ["browser", "os", "app"]) {
+      const context = event.contexts?.[key];
+      if (!context || typeof context !== "object") continue;
+      const safeContext = {};
+      for (const field of ["name", "version", "app_version", "build_type"]) {
+        if (typeof context[field] === "string" && context[field].length <= 80) safeContext[field] = context[field];
+      }
+      if (Object.keys(safeContext).length > 0) allowedContexts[key] = safeContext;
+    }
+    event.contexts = allowedContexts;
+
+    for (const exception of event.exception?.values || []) {
+      exception.value = typeof exception.type === "string" ? exception.type.slice(0, 80) : "JavaScript error";
+      if (exception.stacktrace?.frames) {
+        exception.stacktrace.frames = exception.stacktrace.frames.map(sanitizeFrame);
+      }
+    }
+    if (testDelivery) testDelivery.passedBeforeSend = true;
+    if (testDelivery) diagnostic("info", "Test event passed beforeSend consent and privacy filtering.");
+    return event;
+  }
+
+  function isFirstPartySource(filename) {
+    if (typeof filename !== "string" || filename.length === 0) return false;
+    try {
+      const sourceUrl = new URL(filename, window.location.href);
+      const pageUrl = new URL(window.location.href);
+      if (sourceUrl.protocol === "file:" && pageUrl.protocol === "file:") {
+        return sourceUrl.pathname.startsWith(new URL(".", pageUrl).pathname);
+      }
+      return sourceUrl.origin === pageUrl.origin;
+    } catch {
+      return false;
+    }
+  }
+
+  function stackContainsFirstPartySource(error) {
+    if (!(error instanceof Error) || typeof error.stack !== "string") return false;
+    return error.stack.split("\n").some(line => {
+      const match = line.match(/(?:https?|file):\/\/[^\s)]+/i);
+      return match ? isFirstPartySource(match[0]) : line.includes("script.js");
+    });
+  }
+
+  function captureError(session, error) {
+    if (!isSessionAllowed(session) || !(error instanceof Error)) return null;
+    if (seenErrors.has(error)) return null;
+    seenErrors.add(error);
+    try {
+      const eventId = session.api.captureException(error);
+      if (typeof eventId === "string" && isSessionAllowed(session)) {
+        return eventId;
+      }
+      diagnostic("warn", "SDK capture returned no event ID or consent changed during capture.");
+    } catch {
+      // Diagnostics must never interrupt game behavior.
+      diagnostic("error", "SDK capture call failed; no error details were logged.");
+    }
+    return null;
+  }
+
+  function installErrorListeners(session) {
+    const onError = event => {
+      if (!isSessionAllowed(session)) return;
+      if (!isFirstPartySource(event.filename)) {
+        diagnostic("warn", "Global error ignored because its source was not first-party.");
+        return;
+      }
+      if (event.error instanceof Error) captureError(session, event.error);
+      else captureError(session, new Error("Uncaught JavaScript error"));
+    };
+    const onUnhandledRejection = event => {
+      if (!isSessionAllowed(session)) return;
+      const reason = event.reason;
+      if (reason instanceof Error) {
+        if (stackContainsFirstPartySource(reason)) captureError(session, reason);
+        return;
+      }
+      // Never copy a primitive rejection value into a report; it may contain user input.
+      captureError(session, new Error("Unhandled promise rejection"));
+    };
+
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onUnhandledRejection);
+    session.removeListeners = () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onUnhandledRejection);
+      session.removeListeners = null;
+    };
+  }
+
+  function disableSession(session) {
+    if (!session) return;
+    session.active = false;
+    if (session.removeListeners) session.removeListeners();
+    if (session.transport) session.transport.dropPending();
+    session.testDeliveries.clear();
+    session.testErrors = new WeakMap();
+  }
+
+  async function initializeForConsent(generation) {
+    const api = await loadSdk(generation);
+    if (!api) {
+      if (generation === consentGeneration && hasConsent()) {
+        diagnostic("error", "SDK load failed or required SDK APIs are unavailable.");
+      }
+      return false;
+    }
+    if (generation !== consentGeneration || !hasConsent() || !hasDsn()) return false;
+
+    const session = {
+      api,
+      generation,
+      active: true,
+      testDeliveries: new Map(),
+      testErrors: new WeakMap(),
+      removeListeners: null,
+      transport: null,
+      requestContext: null,
+    };
+    activeSession = session;
+
+    try {
+      api.init({
+        dsn: SENTRY_CONFIG.dsn.trim(),
+        release: SENTRY_CONFIG.release || undefined,
+        environment: SENTRY_CONFIG.environment || "production",
+        defaultIntegrations: false,
+        integrations: typeof api.dedupeIntegration === "function" ? [api.dedupeIntegration()] : [],
+        maxBreadcrumbs: 0,
+        sendClientReports: false,
+        dataCollection: {
+          userInfo: false,
+          cookies: false,
+          httpHeaders: false,
+          httpBodies: [],
+          urlQueryParams: false,
+          stackFrameVariables: false,
+          frameContextLines: 0,
+          graphQL: { document: false, variables: false },
+          genAI: { inputs: false, outputs: false },
+          databaseQueryData: false,
+          queues: false,
+        },
+        beforeBreadcrumb: () => null,
+        beforeSend: (event, hint) => sanitizeEvent(event, session, hint),
+        transport: options => {
+          session.transport = createConsentTransport(api, options, session);
+          return session.transport;
+        },
+      });
+
+      if (!isSessionAllowed(session, generation)) {
+        disableSession(session);
+        if (activeSession === session) activeSession = null;
+        return false;
+      }
+      installErrorListeners(session);
+      diagnostic("info", "Sentry initialized for the consented development session.");
+      return true;
+    } catch {
+      disableSession(session);
+      if (activeSession === session) activeSession = null;
+      diagnostic("error", "SDK initialization failed; no error details were logged.");
+      return false;
+    }
+  }
+
+  async function sendDevelopmentTestEvent() {
+    if (!isDevelopment) return false;
+    if (!hasConsent()) {
+      diagnostic("warn", "Test event not sent: Crash Diagnostics consent is OFF.");
+      return false;
+    }
+
+    const initialized = await refreshConsent();
+    const session = activeSession;
+    if (!initialized || !isSessionAllowed(session)) {
+      diagnostic("error", "Test event not sent: consented SDK session is unavailable.");
+      return false;
+    }
+    if (typeof session.api.captureException !== "function" || typeof session.api.flush !== "function") {
+      diagnostic("error", "Test event not sent: required SDK capture/flush API is unavailable.");
+      return { captured: false, sent: false, serverAccepted: false, httpStatus: null, flushCompleted: false };
+    }
+
+    const delivery = {
+      requestStarted: false,
+      serverAccepted: null,
+      httpStatus: null,
+      transportError: false,
+      passedBeforeSend: false,
+      rejectedByBeforeSend: false,
+    };
+    let eventId;
+    const testError = new Error("Bomb Defuse Sentry delivery verification");
+    session.testErrors.set(testError, delivery);
+    try {
+      eventId = session.api.captureException(testError);
+    } catch {
+      diagnostic("error", "SDK capture API failed; no event details were logged.");
+      return { captured: false, sent: false, serverAccepted: false, httpStatus: null, flushCompleted: false };
+    }
+    if (typeof eventId !== "string" || !isSessionAllowed(session)) {
+      diagnostic("warn", "SDK did not accept the test event, or consent changed during capture.");
+      return { captured: false, sent: false, serverAccepted: false, httpStatus: null, flushCompleted: false };
+    }
+
+    delivery.captured = true;
+    session.testDeliveries.set(eventId, delivery);
+    diagnostic("info", "Test event accepted by the SDK capture API.");
+
+    let flushCompleted = false;
+    try {
+      // This flush is explicit and test-only. Consent revocation never calls it.
+      if (isSessionAllowed(session)) flushCompleted = await session.api.flush(6000);
+    } catch {
+      diagnostic("error", "Test-only SDK flush failed; no event details were logged.");
+    } finally {
+      session.testDeliveries.delete(eventId);
+    }
+
+    const result = {
+      captured: delivery.captured,
+      sent: delivery.requestStarted,
+      serverAccepted: delivery.serverAccepted,
+      httpStatus: delivery.httpStatus,
+      flushCompleted: flushCompleted === true,
+      beforeSendPassed: delivery.passedBeforeSend,
+      rejectedByBeforeSend: delivery.rejectedByBeforeSend,
+      transportError: delivery.transportError,
+    };
+    diagnostic("info", `Test delivery result: captured=${result.captured}, sent=${result.sent}, serverAccepted=${result.serverAccepted}, httpStatus=${result.httpStatus ?? "none"}.`);
+    return result;
+  }
+
+  function refreshConsent() {
+    if (!hasConsent()) {
+      if (consentWasEnabled) consentGeneration += 1;
+      consentWasEnabled = false;
+      cancelSdkLoad();
+      if (activeSession) {
+        disableSession(activeSession);
+        activeSession = null;
+      }
+      initialization = null;
+      initializationGeneration = -1;
+      return Promise.resolve(false);
+    }
+
+    if (!hasDsn()) {
+      diagnostic("error", "Sentry DSN is not configured; initialization was skipped.");
+      return Promise.resolve(false);
+    }
+    if (!consentWasEnabled) {
+      consentGeneration += 1;
+      consentWasEnabled = true;
+    }
+    const generation = consentGeneration;
+    if (activeSession && isSessionAllowed(activeSession, generation)) return Promise.resolve(true);
+    if (initialization && initializationGeneration === generation) return initialization;
+
+    initializationGeneration = generation;
+    const task = initializeForConsent(generation).catch(() => false);
+    initialization = task;
+    task.finally(() => {
+      if (initialization === task) {
+        initialization = null;
+        initializationGeneration = -1;
+      }
+    });
+    return task;
+  }
+
+  function initialize() {
+    return refreshConsent();
+  }
+
+  function isEnabled() {
+    return Boolean(activeSession && isSessionAllowed(activeSession));
+  }
+
+  if (isDevelopment) {
+    Object.defineProperty(window, "_bombDefuseSendSentryTestEvent", {
+      configurable: true,
+      value: sendDevelopmentTestEvent,
+    });
+    Object.defineProperty(window, "__bombDefuseSendSentryTestEvent", {
+      configurable: true,
+      value: sendDevelopmentTestEvent,
+    });
+    diagnostic("info", "Development test helper available; it requires Crash Diagnostics consent.");
+  }
+
+  return { initialize, refreshConsent, isEnabled };
+})();
+
+/* =========================================================
+   NATIVE ANDROID CRASHLYTICS CONSENT BRIDGE
+========================================================= */
+const NativeCrashlyticsConsentManager = (() => {
+  let transitionQueue = Promise.resolve(false);
+  let transitionGeneration = 0;
+
+  function getNativeBridge() {
+    const bridge = window.BombDefuseNativeCrashlytics;
+    if (typeof bridge?.isNativePlatform !== "function" || !bridge.isNativePlatform()) return null;
+    if (typeof bridge.setEnabled !== "function" || typeof bridge.deleteUnsentReports !== "function") return null;
+    return bridge;
+  }
+
+  function applyConsent({ deleteBeforeEnable = false } = {}) {
+    const generation = ++transitionGeneration;
+    const allowed = ConsentManager.hasConsent("crashReporting");
+    const bridge = getNativeBridge();
+    if (!bridge) return Promise.resolve(false);
+
+    const transition = async () => {
+      if (generation !== transitionGeneration) return false;
+      try {
+        if (!allowed) {
+          // Native collection changes take effect on the next app launch.
+          await bridge.setEnabled(false);
+          await bridge.deleteUnsentReports();
+          return false;
+        }
+
+        if (deleteBeforeEnable) {
+          // Never carry reports collected while consent was OFF into an ON period.
+          await bridge.deleteUnsentReports();
+          if (generation !== transitionGeneration || !ConsentManager.hasConsent("crashReporting")) {
+            await bridge.setEnabled(false);
+            await bridge.deleteUnsentReports();
+            return false;
+          }
+        }
+
+        await bridge.setEnabled(true);
+        if (generation !== transitionGeneration || !ConsentManager.hasConsent("crashReporting")) {
+          return false;
+        }
+        return true;
+      } catch {
+        // Fail closed if deleting old reports or updating native consent fails.
+        if (allowed) {
+          try { await bridge.setEnabled(false); } catch { /* Preserve fail-closed behavior best-effort. */ }
+        }
+        console.warn("[Crashlytics] Native consent update failed; no report details were logged.");
+        return false;
+      }
+    };
+
+    const result = transitionQueue.then(transition, transition);
+    transitionQueue = result.catch(() => false);
+    return result;
+  }
+
+  function refreshConsent() {
+    return applyConsent();
+  }
+
+  function setExplicitConsent(allowed) {
+    const effectiveConsent = ConsentManager.hasConsent("crashReporting");
+    if (allowed !== effectiveConsent) return Promise.resolve(false);
+    return applyConsent({ deleteBeforeEnable: allowed === true });
+  }
+
+  return { initialize: refreshConsent, refreshConsent, setExplicitConsent };
 })();
 
 /* =========================================================
@@ -5269,10 +6438,10 @@ const CampaignConfig = {
         wireIndex: 0
       },
       rulesInfo: [
-        { icon: "⚡", label: "PHASE 1 · SIGNAL MEMORY", desc: "GREEN → BLUE → RED → BLUE → GREEN" },
-        { icon: "🔄", label: "PHASE 2 · CIRCUIT BYPASS", desc: "CONNECT START → END" },
-        { icon: "✂️", label: "PHASE 3 · FINAL DEFUSAL", desc: "CUT THE RED WIRE" },
-        { icon: "⏱", label: "30 SECONDS TOTAL", desc: "Shared countdown across all 3 phases." }
+        { icon: "⚡", label: "PHASE 1 - SIGNAL MEMORY", desc: "GREEN -> BLUE -> RED -> BLUE -> GREEN" },
+        { icon: "🔄", label: "PHASE 2 - CIRCUIT BYPASS", desc: "CONNECT START -> END" },
+        { icon: "✂️", label: "PHASE 3 - FINAL DEFUSAL", desc: "CUT THE RED WIRE" },
+        { icon: "⏱", label: "30 SECONDS TOTAL", desc: "It never resets between phases." }
       ],
       starConditions: [
         { star: 1, desc: "Complete before the timer reaches zero", test: ctx => ctx.completed },
@@ -6701,6 +7870,11 @@ const CampaignManager = (() => {
     run.isCampaign = true;
     run.campaignLevel = levelNum;
     run.powerUsedOnRun = false;
+    run.analyticsAttemptId = AnalyticsManager.beginAttempt();
+    AnalyticsManager.logGameplayEvent("level_started", run.analyticsAttemptId, "start", {
+      level_id: levelNum,
+      puzzle_type: AnalyticsManager.puzzleTypeForLevel(levelDef)
+    });
 
     state = "PLAYING";
     if (screens.game) {
@@ -6724,6 +7898,7 @@ const CampaignManager = (() => {
     if (bestLabel) bestLabel.textContent = "BEST";
 
     if (el.bomb) {
+      el.bomb.classList.toggle("word-puzzle-mode", levelDef.gameplayType === "WORD_PUZZLE");
       BombVisualVariants.forEach(v => el.bomb.classList.remove(v.className));
       Object.values(BombEventRegistry).forEach(evt => el.bomb.classList.remove(evt.className));
       el.bomb.classList.remove("exploding", "shaking", "success-pulse", "failure-pulse", "pcb-pulse-phase");
@@ -7296,16 +8471,21 @@ const CampaignManager = (() => {
 
     // Evaluate star conditions dynamically for this level
     let starsEarned = 0;
-    const starResults = [];
     if (Array.isArray(levelDef.starConditions)) {
-      levelDef.starConditions.forEach((cond, idx) => {
+      levelDef.starConditions.forEach(cond => {
         const passed = Boolean(cond.test(ctx));
-        starResults[idx] = passed;
         if (passed) starsEarned += 1;
       });
     } else {
       starsEarned = 1;
     }
+
+    AnalyticsManager.logGameplayEvent("level_completed", run?.analyticsAttemptId, "terminal", {
+      level_id: levelNum,
+      puzzle_type: AnalyticsManager.puzzleTypeForLevel(levelDef),
+      duration_seconds: timeElapsed,
+      stars_earned: starsEarned
+    });
 
     const baseScore = levelDef.baseReward?.score || 100;
     const timeBonus = Math.round(secondsLeft * 20);
@@ -7356,7 +8536,7 @@ const CampaignManager = (() => {
     // Set 3 stars
     [el.resultStar1, el.resultStar2, el.resultStar3].forEach((starEl, idx) => {
       if (!starEl) return;
-      starEl.classList.toggle("star-active", Boolean(starResults[idx]));
+      starEl.classList.toggle("star-active", idx < starsEarned);
     });
 
     if (el.campaignResultScore) el.campaignResultScore.textContent = finalScore.toLocaleString();
@@ -7381,11 +8561,18 @@ const CampaignManager = (() => {
     later(() => {
       state = "CAMPAIGN_RESULT";
       showScreen("campaign-result");
+      window.BombDefuseAdMobService?.onCampaignLevelCompleted(levelNum < 10);
     }, 480);
   }
 
   function failLevel(levelNum, reason = "WRONG WIRE") {
     const levelDef = CampaignConfig.levels[levelNum] || { title: "FIRST CUT" };
+    const durationSeconds = levelDef.timer ? Math.max(0, levelDef.timer - (Number(Timer.remaining) || 0)) : 0;
+    AnalyticsManager.logGameplayEvent("level_failed", run?.analyticsAttemptId, "terminal", {
+      level_id: levelNum,
+      puzzle_type: AnalyticsManager.puzzleTypeForLevel(levelDef),
+      duration_seconds: durationSeconds
+    });
     CircuitFlowManager.cleanup();
     SignalMemoryManager.cleanup();
     WordPuzzleManager.cleanup();
@@ -7610,10 +8797,16 @@ const AccountSettingsUI = {
     if (el.settingsStatusVal) el.settingsStatusVal.textContent = "Active";
 
     if (el.btnToggleAnalytics) {
-      const active = Boolean(profile.privacy?.analytics);
+      const active = ConsentManager.hasConsent("analytics");
       el.btnToggleAnalytics.textContent = active ? "ON" : "OFF";
       el.btnToggleAnalytics.classList.toggle("on", active);
       el.btnToggleAnalytics.classList.toggle("off", !active);
+    }
+    if (el.btnToggleCrashReporting) {
+      const active = ConsentManager.hasConsent("crashReporting");
+      el.btnToggleCrashReporting.textContent = active ? "ON" : "OFF";
+      el.btnToggleCrashReporting.classList.toggle("on", active);
+      el.btnToggleCrashReporting.classList.toggle("off", !active);
     }
     if (el.btnToggleAds) {
       const active = Boolean(profile.privacy?.personalizedAds);
@@ -7641,9 +8834,11 @@ function startGame() {
   clearPendingTransitions();
   Timer.stop();
   PowerManager.cleanup();
+  el.bomb?.classList.remove("word-puzzle-mode");
   AudioManager.init();
   gameMode = "NORMAL";
   run = newRun();
+  run.analyticsAttemptId = AnalyticsManager.beginAttempt();
   state = "PLAYING";
   if (screens.game) {
     screens.game.style.setProperty("--danger-level", "0");
@@ -7672,6 +8867,7 @@ function startDailyChallenge() {
   clearPendingTransitions();
   Timer.stop();
   PowerManager.cleanup();
+  el.bomb?.classList.remove("word-puzzle-mode");
   AudioManager.init();
   gameMode = "DAILY";
 
@@ -7680,6 +8876,7 @@ function startDailyChallenge() {
   }
 
   run = newRun();
+  run.analyticsAttemptId = AnalyticsManager.beginAttempt();
   run.totalTimeRemaining = 0;
 
   // Restore progression safely if resuming an in-progress challenge
@@ -7744,6 +8941,12 @@ function nextBomb() {
     run.difficulty = diffKey;
     const diffCfg = EndlessDifficultyConfig[diffKey];
     run.bomb = BombFactory.create(run.bombNumber, run);
+    AnalyticsManager.logGameplayEvent("bomb_generation_result", run.analyticsAttemptId, `generation-${run.bombNumber}`, {
+      difficulty: diffKey === "veryHard" ? "very_hard" : diffKey,
+      wire_count: run.bomb.wires.length,
+      phase_count: run.bomb.totalPhases || run.bomb.phases?.length || 1,
+      rule_type: run.bomb.challenge?.type
+    });
     const startBank = run.timeBank || 0;
     const baseTime = getEndlessBaseTime(run.bombNumber);
     const totalStartTime = Math.max(EndlessTimerConfig.minTime, baseTime + UpgradeManager.timeBonus() + startBank);
@@ -8734,14 +9937,25 @@ if (el.achFilterPills) {
 }
 
 if (byId("btn-back-shop")) byId("btn-back-shop").addEventListener("click", returnToMenu);
-byId("btn-reset-progress").addEventListener("click", () => showScreen("reset"));
+let resetInProgress = false;
+byId("btn-reset-progress").addEventListener("click", () => {
+  if (resetInProgress) return;
+  byId("btn-confirm-reset").disabled = false;
+  showScreen("reset");
+});
 
 byId("btn-confirm-reset").addEventListener("click", () => {
+  if (resetInProgress) return;
+  resetInProgress = true;
+  byId("btn-confirm-reset").disabled = true;
   clearPendingTransitions();
   Timer.stop();
   PowerManager.cleanup();
   AchievementToastManager.reset();
   profile = SaveManager.reset();
+  AnalyticsManager.refreshConsent();
+  SentryCrashReportingManager.refreshConsent();
+  void NativeCrashlyticsConsentManager.refreshConsent();
   AudioManager.setSoundEnabled(profile.soundEnabled);
   run = null;
   cachedDailyChallenge = null;
@@ -8749,9 +9963,10 @@ byId("btn-confirm-reset").addEventListener("click", () => {
   ShopUI.render();
   returnToMenu();
   showToast("ALL PROGRESS RESET", "danger");
+  later(() => { resetInProgress = false; }, 300);
 });
 
-byId("btn-cancel-reset").addEventListener("click", () => showScreen("shop"));
+byId("btn-cancel-reset").addEventListener("click", () => showScreen("settings"));
 byId("btn-pause").addEventListener("click", pauseGame);
 byId("btn-resume").addEventListener("click", resumeGame);
 byId("btn-restart-pause").addEventListener("click", () => {
@@ -8867,9 +10082,10 @@ if (byId("btn-start-campaign-level")) {
 }
 
 if (byId("btn-campaign-next-level")) {
-  byId("btn-campaign-next-level").addEventListener("click", () => {
+  byId("btn-campaign-next-level").addEventListener("click", async () => {
     const nextLevel = (campaignCurrentLevel || 1) + 1;
     if (CampaignConfig.levels[nextLevel] && profile.campaign?.unlockedLevels?.includes(nextLevel)) {
+      await window.BombDefuseAdMobService?.showInterstitialAtTransition();
       CampaignManager.openBriefing(nextLevel);
     } else {
       CampaignManager.openLevelSelect();
@@ -8903,6 +10119,7 @@ Object.keys(PowerDefinitions).forEach(id => {
 });
 
 document.addEventListener("visibilitychange", () => {
+  window.BombDefuseAdMobService?.onVisibilityChanged(!document.hidden);
   if (document.hidden) {
     SaveManager.flush?.();
     if (state === "PLAYING") pauseGame();
@@ -9108,7 +10325,7 @@ if (el.btnPopupSettings) {
     e.stopPropagation();
     closeAccountPopup();
     lastScreenBeforeSettings = "menu";
-    GameSettingsUI.render();
+    SettingsUI.render();
     showScreen("settings");
   });
 }
@@ -9118,7 +10335,7 @@ if (el.btnPopupGuestSettings) {
     e.stopPropagation();
     closeAccountPopup();
     lastScreenBeforeSettings = "menu";
-    GameSettingsUI.render();
+    SettingsUI.render();
     showScreen("settings");
   });
 }
@@ -9517,10 +10734,19 @@ if (byId("btn-settings-change-avatar")) {
 
 if (byId("btn-toggle-analytics")) {
   byId("btn-toggle-analytics").addEventListener("click", () => {
-    const current = Boolean(profile.privacy?.analytics);
+    const current = ConsentManager.hasConsent("analytics");
     ConsentManager.setConsent("analytics", !current);
     AccountSettingsUI.render();
     showToast(`ANALYTICS ${!current ? "ENABLED" : "DISABLED"}`, "neutral");
+  });
+}
+
+if (byId("btn-toggle-crash-reporting")) {
+  byId("btn-toggle-crash-reporting").addEventListener("click", async () => {
+    const current = ConsentManager.hasConsent("crashReporting");
+    await ConsentManager.setConsent("crashReporting", !current);
+    AccountSettingsUI.render();
+    showToast(`CRASH DIAGNOSTICS CONSENT ${!current ? "ENABLED" : "DISABLED"}`, "neutral");
   });
 }
 
@@ -9530,6 +10756,13 @@ if (byId("btn-toggle-ads")) {
     ConsentManager.setConsent("personalizedAds", !current);
     AccountSettingsUI.render();
     showToast(`PERSONALIZED ADS ${!current ? "ENABLED" : "DISABLED"}`, "neutral");
+  });
+}
+
+if (byId("btn-manage-ad-privacy")) {
+  byId("btn-manage-ad-privacy").addEventListener("click", async () => {
+    const available = await window.BombDefuseAdMobService?.showPrivacyOptions();
+    if (!available) showToast("AD PRIVACY OPTIONS ARE NOT AVAILABLE RIGHT NOW", "neutral");
   });
 }
 
@@ -9602,9 +10835,25 @@ if (byId("input-delete-confirm")) {
 }
 
 if (byId("btn-confirm-delete-account")) {
-  byId("btn-confirm-delete-account").addEventListener("click", () => {
+  byId("btn-confirm-delete-account").addEventListener("click", async () => {
+    if (el.btnConfirmDeleteAccount?.disabled) return;
     if (el.btnConfirmDeleteAccount) el.btnConfirmDeleteAccount.disabled = true;
-    AuthManager.deleteAccount();
+    if (el.btnCancelDeleteAccount) el.btnCancelDeleteAccount.disabled = true;
+    try {
+      const result = await AuthManager.deleteAccount();
+      if (!result?.success) {
+        showToast(result?.message || "Account deletion did not complete. Your local data was kept; retry or contact support.", "danger", 6500);
+      }
+    } catch {
+      showToast("Account deletion did not complete. Your local data was kept when possible; retry or contact support.", "danger", 6500);
+    } finally {
+      if (screens["delete-account"]?.classList.contains("active")) {
+        if (el.btnConfirmDeleteAccount) {
+          el.btnConfirmDeleteAccount.disabled = el.inputDeleteConfirm?.value.trim() !== "DELETE";
+        }
+        if (el.btnCancelDeleteAccount) el.btnCancelDeleteAccount.disabled = false;
+      }
+    }
   });
 }
 
@@ -9658,11 +10907,14 @@ if (profile.reducedMotion) {
 AuthManager.initialize();
 CloudSaveManager.initialize();
 AnalyticsManager.initialize();
+SentryCrashReportingManager.initialize();
+void NativeCrashlyticsConsentManager.initialize();
 AudioManager.setSoundEnabled(profile.soundEnabled);
 refreshPersistentUI();
 updateMenuAccountBadge();
 DailyGoalsManager.updateBadge();
 showScreen("menu");
+void window.BombDefuseAdMobService?.initializeAtLaunch();
 LoginRewardManager.checkAndShowOnMenu();
 
 

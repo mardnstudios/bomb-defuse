@@ -1,0 +1,18 @@
+{
+  "name": "bomb-defuse",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "copy:web": "node scripts/copy-web-assets.mjs"
+  },
+  "dependencies": {
+    "@capacitor-community/admob": "8.2.0",
+    "@capacitor-firebase/crashlytics": "8.5.2",
+    "@capacitor/android": "8.5.2",
+    "@capacitor/core": "8.5.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.2",
+    "esbuild": "0.28.2"
+  }
+}

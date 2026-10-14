@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "1036895238881",
+    "project_id": "bomb-defuse-0428",
+    "storage_bucket": "bomb-defuse-0428.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1036895238881:android:3125b7fe4b719c18c2d5a0",
+        "android_client_info": {
+          "package_name": "com.dinesh.bombdefuse"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1036895238881-tfpu1koimuduvq4a41p1vhc0ebg11eu7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBFlKZJGw4MuHesmQaCcoyCIZclDaRKkuM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1036895238881-tfpu1koimuduvq4a41p1vhc0ebg11eu7.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
