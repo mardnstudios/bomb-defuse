@@ -1,0 +1,21 @@
+{
+  "name": "bomb-defuse-leaderboard-functions",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "emulators": "firebase --config ../firebase.json emulators:start --project demo-bomb-defuse --only auth,firestore,functions",
+    "emulators:exec": "firebase --config ../firebase.json emulators:exec --project demo-bomb-defuse --only auth,firestore,functions \"node test/run-emulator-suite.js\"",
+    "test:emulator": "npm run emulators:exec"
+  },
+  "dependencies": {
+    "firebase-admin": "14.5.0",
+    "firebase-functions": "7.4.0"
+  },
+  "devDependencies": {
+    "firebase-tools": "15.34.0"
+  }
+}

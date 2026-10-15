@@ -170,7 +170,7 @@ const AchievementDefinitions = {
 };
 
 const screens = Object.fromEntries([
-  "menu", "game", "pause", "result", "daily-result", "achievements", "shop", "reset", "tutorial", "stats", "daily-goals", "login-reward", "endless-briefing",
+  "menu", "game", "pause", "result", "daily-result", "achievements", "shop", "reset", "tutorial", "stats", "leaderboard", "daily-goals", "login-reward", "endless-briefing",
   "login", "register", "forgot-password", "profile", "avatar-picker", "settings", "account-settings", "delete-account", "logout-confirm", "sync-conflict",
   "campaign-select", "campaign-briefing", "campaign-result"
 ].map(name => [name, document.getElementById(`screen-${name}`)]));
@@ -185,6 +185,7 @@ const el = {
   resultTitle: byId("result-title"), resultMessage: byId("result-message"), resultScore: byId("result-score"), resultBest: byId("result-best"), resultBombs: byId("result-bombs"), resultStreak: byId("result-streak"), resultCoinsEarned: byId("result-coins-earned"), resultCurrentCoins: byId("result-current-coins"),
   resultComparisonBox: byId("result-comparison-box"), resultComparisonText: byId("result-comparison-text"),
   btnShareResult: byId("btn-share-result"), btnResultShop: byId("btn-result-shop"),
+  btnReviveResult: byId("btn-revive-result"),
   // Campaign elements
   btnCampaign: byId("btn-campaign"),
   btnBackCampaignSelect: byId("btn-back-campaign-select"),
@@ -507,6 +508,14 @@ function isAnalyticsConsentAllowed(privacyValue, consentValue) {
 }
 
 function isCrashReportingConsentAllowed(privacyValue, consentValue) {
+  return privacyValue === true && consentValue === true;
+}
+
+function isPersonalizedAdsPreferenceAllowed(privacyValue, consentValue) {
+  return privacyValue === true && consentValue === true;
+}
+
+function isPublicLeaderboardOptInAllowed(privacyValue, consentValue) {
   return privacyValue === true && consentValue === true;
 }
 
@@ -885,6 +894,14 @@ const CloudSaveManager = (() => {
         && isCrashReportingConsentAllowed(chosenSave.privacy.crashReporting, chosenSave.consent.crashReporting);
       chosenSave.privacy.crashReporting = crashReportingAllowed;
       chosenSave.consent.crashReporting = crashReportingAllowed;
+      const personalizedAdsAllowed = isPersonalizedAdsPreferenceAllowed(localSave.privacy.personalizedAds, localSave.consent.personalizedAds)
+        && isPersonalizedAdsPreferenceAllowed(chosenSave.privacy.personalizedAds, chosenSave.consent.personalizedAds);
+      chosenSave.privacy.personalizedAds = personalizedAdsAllowed;
+      chosenSave.consent.personalizedAds = personalizedAdsAllowed;
+      const publicLeaderboardAllowed = isPublicLeaderboardOptInAllowed(localSave.privacy.publicLeaderboard, localSave.consent.publicLeaderboard)
+        && isPublicLeaderboardOptInAllowed(chosenSave.privacy.publicLeaderboard, chosenSave.consent.publicLeaderboard);
+      chosenSave.privacy.publicLeaderboard = publicLeaderboardAllowed;
+      chosenSave.consent.publicLeaderboard = publicLeaderboardAllowed;
     } else if (choice === "merge") {
       chosenSave = mergeSaves(localData, cloudData);
     } else {
@@ -893,6 +910,7 @@ const CloudSaveManager = (() => {
 
     profile = chosenSave;
     SaveManager.save(profile, true);
+    void window.BombDefuseAdMobService?.setPersonalizedAdsPreference(ConsentManager.hasConsent("personalizedAds"));
     void AnalyticsManager.refreshConsent();
     activeConflictResolution = null;
     refreshPersistentUI();
@@ -1033,6 +1051,7 @@ const CloudSaveManager = (() => {
         const cloudData = res.data;
         _hasCloudSave = true;
         profile = mergeSaves(profile, cloudData);
+        void window.BombDefuseAdMobService?.setPersonalizedAdsPreference(ConsentManager.hasConsent("personalizedAds"));
         void AnalyticsManager.refreshConsent();
         void SentryCrashReportingManager.refreshConsent();
         void NativeCrashlyticsConsentManager.refreshConsent();
@@ -1143,12 +1162,14 @@ const SaveManager = (() => {
       analytics: false,
       crashReporting: false,
       personalizedAds: false,
+      publicLeaderboard: false,
     },
     consent: {
       essential: true,
       analytics: false,
       crashReporting: false,
       personalizedAds: false,
+      publicLeaderboard: false,
     },
     achievements: {
       unlocked: [],
@@ -1293,17 +1314,21 @@ const SaveManager = (() => {
     const consIn = (incoming.consent && typeof incoming.consent === "object" && !Array.isArray(incoming.consent)) ? incoming.consent : {};
     const analyticsAllowed = isAnalyticsConsentAllowed(privIn.analytics, consIn.analytics);
     const crashReportingAllowed = isCrashReportingConsentAllowed(privIn.crashReporting, consIn.crashReporting);
+    const personalizedAdsAllowed = isPersonalizedAdsPreferenceAllowed(privIn.personalizedAds, consIn.personalizedAds);
+    const publicLeaderboardAllowed = isPublicLeaderboardOptInAllowed(privIn.publicLeaderboard, consIn.publicLeaderboard);
     base.privacy = {
       analytics: analyticsAllowed,
       crashReporting: crashReportingAllowed,
-      personalizedAds: Boolean(privIn.personalizedAds),
+      personalizedAds: personalizedAdsAllowed,
+      publicLeaderboard: publicLeaderboardAllowed,
     };
 
     base.consent = {
       essential: true,
       analytics: analyticsAllowed,
       crashReporting: crashReportingAllowed,
-      personalizedAds: Boolean(consIn.personalizedAds),
+      personalizedAds: personalizedAdsAllowed,
+      publicLeaderboard: publicLeaderboardAllowed,
     };
 
     const incomingAch = (incoming.achievements && typeof incoming.achievements === "object" && !Array.isArray(incoming.achievements)) ? incoming.achievements : {};
@@ -2345,7 +2370,7 @@ const PowerManager = (() => {
   }
 
   function canActivate(id) {
-    if (state !== "PLAYING" || !run || run.inputLocked) return false;
+    if (state !== "PLAYING" || !run || run.inputLocked || gameMode === "RANKED") return false;
     if (count(id) <= 0) return false;
     if (id === "timeFreeze" && isFrozen) return false;
     if (id === "timeSlow" && (isSlowed || isFrozen)) return false;
@@ -3050,7 +3075,7 @@ const ShopUI = (() => {
   return { render };
 })();
 
-let state = "MENU", run = null, gameMode = "NORMAL", cachedDailyChallenge = null;
+let state = "MENU", run = null, gameMode = "NORMAL", cachedDailyChallenge = null, startGamePending = false;
 const pendingTimeouts = new Set();
 
 function rule(type, text, answerIndex) { return { type, text, answerIndex }; }
@@ -3075,6 +3100,7 @@ function newRun() {
     shieldUsed: false,
     totalTimeRemaining: 0,
     powerUsedOnRun: false,
+    rewardReviveUsed: false,
     achievedMilestones: new Set(),
     runStartTime: performance.now(),
   };
@@ -3099,7 +3125,7 @@ function showScreen(name) {
       target.setAttribute("aria-hidden", "false");
     }
   }
-  window.BombDefuseAdMobService?.setScreen(name);
+  window.BombDefuseAdMobService?.setScreen(name, gameMode);
 }
 function later(callback, milliseconds) { const id = setTimeout(() => { pendingTimeouts.delete(id); callback(); }, milliseconds); pendingTimeouts.add(id); return id; }
 function clearPendingTransitions() { pendingTimeouts.forEach(id => clearTimeout(id)); pendingTimeouts.clear(); }
@@ -4303,6 +4329,8 @@ const AUTH_CONFIG = {
   emailEnabled: false,
 };
 
+const LEADERBOARD_FIREBASE_EMULATOR_CONFIG = window.__BOMB_DEFUSE_LEADERBOARD_CONFIG__?.firebaseEmulator || null;
+const USE_LEADERBOARD_FIREBASE_EMULATORS = LEADERBOARD_FIREBASE_EMULATOR_CONFIG?.enabled === true;
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyA8hs_8wY570oHBg_-eE0z7ObFLmJGpE2Y",
   authDomain: "bomb-defuse-0428.firebaseapp.com",
@@ -4312,6 +4340,16 @@ const FIREBASE_CONFIG = {
   appId: "1:1036895238881:web:5efadcfca4e53865c2d5a0",
   measurementId: "G-8TV39CN4V9"
 };
+const FIREBASE_RUNTIME_CONFIG = USE_LEADERBOARD_FIREBASE_EMULATORS
+  ? {
+      apiKey: "demo-api-key",
+      authDomain: `${LEADERBOARD_FIREBASE_EMULATOR_CONFIG.projectId}.firebaseapp.com`,
+      projectId: LEADERBOARD_FIREBASE_EMULATOR_CONFIG.projectId,
+      storageBucket: `${LEADERBOARD_FIREBASE_EMULATOR_CONFIG.projectId}.appspot.com`,
+      messagingSenderId: "000000000000",
+      appId: "1:000000000000:web:demo-local-emulator",
+    }
+  : FIREBASE_CONFIG;
 
 const BOMB_DEFUSE_BUILD_CONFIG = (typeof window !== "undefined"
   && window.__BOMB_DEFUSE_BUILD_CONFIG__
@@ -4346,14 +4384,14 @@ const FirebaseManager = (() => {
 
   function isConfigured() {
     return Boolean(
-      FIREBASE_CONFIG &&
-      FIREBASE_CONFIG.apiKey &&
-      typeof FIREBASE_CONFIG.apiKey === "string" &&
-      FIREBASE_CONFIG.apiKey.trim().length > 0 &&
-      FIREBASE_CONFIG.apiKey !== "FIREBASE_API_KEY_PLACEHOLDER" &&
-      FIREBASE_CONFIG.projectId &&
-      typeof FIREBASE_CONFIG.projectId === "string" &&
-      FIREBASE_CONFIG.projectId.trim().length > 0
+      FIREBASE_RUNTIME_CONFIG &&
+      FIREBASE_RUNTIME_CONFIG.apiKey &&
+      typeof FIREBASE_RUNTIME_CONFIG.apiKey === "string" &&
+      FIREBASE_RUNTIME_CONFIG.apiKey.trim().length > 0 &&
+      FIREBASE_RUNTIME_CONFIG.apiKey !== "FIREBASE_API_KEY_PLACEHOLDER" &&
+      FIREBASE_RUNTIME_CONFIG.projectId &&
+      typeof FIREBASE_RUNTIME_CONFIG.projectId === "string" &&
+      FIREBASE_RUNTIME_CONFIG.projectId.trim().length > 0
     );
   }
 
@@ -4385,14 +4423,24 @@ const FirebaseManager = (() => {
     try {
       if (typeof window !== "undefined" && window.firebase) {
         if (!window.firebase.apps || window.firebase.apps.length === 0) {
-          app = window.firebase.initializeApp(FIREBASE_CONFIG);
+          app = window.firebase.initializeApp(FIREBASE_RUNTIME_CONFIG);
         } else {
           app = window.firebase.apps[0];
         }
         auth = window.firebase.auth();
+        if (USE_LEADERBOARD_FIREBASE_EMULATORS) {
+          const host = LEADERBOARD_FIREBASE_EMULATOR_CONFIG.host || "127.0.0.1";
+          auth.useEmulator(`http://${host}:${Number(LEADERBOARD_FIREBASE_EMULATOR_CONFIG.authPort) || 9099}`);
+        }
         if (typeof window.firebase.firestore === "function") {
           try {
             db = window.firebase.firestore();
+            if (USE_LEADERBOARD_FIREBASE_EMULATORS) {
+              db.useEmulator(
+                LEADERBOARD_FIREBASE_EMULATOR_CONFIG.host || "127.0.0.1",
+                Number(LEADERBOARD_FIREBASE_EMULATOR_CONFIG.firestorePort) || 8080,
+              );
+            }
           } catch (e) {
             console.warn("[FirebaseManager] Firestore initialization warning:", e);
           }
@@ -4725,6 +4773,11 @@ const AuthManager = (() => {
 
   async function handleAuthStateChanged(user) {
     if (user) {
+      const sameRegisteredAccount = profile.account?.mode === "registered" && profile.account?.userId === user.uid;
+      if (!sameRegisteredAccount) {
+        profile.privacy.publicLeaderboard = false;
+        profile.consent.publicLeaderboard = false;
+      }
       let providerName = "email";
       if (user.providerData && user.providerData.length > 0) {
         const pid = user.providerData[0].providerId;
@@ -4907,6 +4960,8 @@ const AuthManager = (() => {
     await FirebaseManager.signOut();
     profile.account.mode = "guest";
     profile.account.provider = "guest";
+    profile.privacy.publicLeaderboard = false;
+    profile.consent.publicLeaderboard = false;
     if (typeof CloudSaveManager !== "undefined") {
       CloudSaveManager.setHasCloudSave?.(false);
     }
@@ -4949,6 +5004,7 @@ const AuthManager = (() => {
         restoreCloudSave: uid => CloudSaveManager.uploadSave(localSnapshot, uid, true),
         resetLocal: () => {
           profile = SaveManager.reset();
+          void window.BombDefuseAdMobService?.setPersonalizedAdsPreference(false);
           AnalyticsManager.refreshConsent();
           SentryCrashReportingManager.refreshConsent();
           void NativeCrashlyticsConsentManager.refreshConsent();
@@ -5126,8 +5182,8 @@ const AnalyticsManager = (() => {
     collectionEnabled = false;
     if (cancelAnalyticsSdkLoad) cancelAnalyticsSdkLoad();
     try {
-      if (FIREBASE_CONFIG.measurementId) {
-        window[`ga-disable-${FIREBASE_CONFIG.measurementId}`] = true;
+      if (FIREBASE_RUNTIME_CONFIG.measurementId) {
+        window[`ga-disable-${FIREBASE_RUNTIME_CONFIG.measurementId}`] = true;
       }
     } catch {}
     if (!analyticsInstance) return;
@@ -5227,8 +5283,8 @@ const AnalyticsManager = (() => {
     // The Google tag honors this global kill switch independently of the Firebase
     // wrapper. Clear it only after the authoritative consent check above succeeds.
     try {
-      if (FIREBASE_CONFIG.measurementId) {
-        window[`ga-disable-${FIREBASE_CONFIG.measurementId}`] = false;
+      if (FIREBASE_RUNTIME_CONFIG.measurementId) {
+        window[`ga-disable-${FIREBASE_RUNTIME_CONFIG.measurementId}`] = false;
       }
     } catch {}
     const generation = consentGeneration;
@@ -5302,6 +5358,9 @@ const ConsentManager = (() => {
     if (type === "crashReporting") {
       return isCrashReportingConsentAllowed(profile?.privacy?.crashReporting, profile?.consent?.crashReporting);
     }
+    if (type === "personalizedAds") {
+      return isPersonalizedAdsPreferenceAllowed(profile?.privacy?.personalizedAds, profile?.consent?.personalizedAds);
+    }
     return Boolean(profile?.consent?.[type]);
   }
 
@@ -5309,11 +5368,14 @@ const ConsentManager = (() => {
     if (type === "essential") return;
     if (!profile.consent) profile.consent = { essential: true, analytics: false, crashReporting: false, personalizedAds: false };
     if (!profile.privacy) profile.privacy = { analytics: false, crashReporting: false, personalizedAds: false };
-    const allowed = type === "crashReporting" ? val === true : (type === "analytics" ? val === true : Boolean(val));
+    const allowed = type === "crashReporting" || type === "analytics" || type === "personalizedAds"
+      ? val === true
+      : Boolean(val);
     profile.consent[type] = allowed;
     profile.privacy[type] = allowed;
     SaveManager.save(profile);
     if (type === "analytics") void AnalyticsManager.refreshConsent();
+    if (type === "personalizedAds") void window.BombDefuseAdMobService?.setPersonalizedAdsPreference(allowed);
     if (type === "crashReporting") {
       void SentryCrashReportingManager.refreshConsent();
       return NativeCrashlyticsConsentManager.setExplicitConsent(allowed);
@@ -8809,7 +8871,7 @@ const AccountSettingsUI = {
       el.btnToggleCrashReporting.classList.toggle("off", !active);
     }
     if (el.btnToggleAds) {
-      const active = Boolean(profile.privacy?.personalizedAds);
+      const active = ConsentManager.hasConsent("personalizedAds");
       el.btnToggleAds.textContent = active ? "ON" : "OFF";
       el.btnToggleAds.classList.toggle("on", active);
       el.btnToggleAds.classList.toggle("off", !active);
@@ -8827,10 +8889,226 @@ const SettingsUI = {
   },
 };
 
+const EndlessLeaderboardUI = (() => {
+  const previewApi = window.BombDefuseLeaderboardPreview;
+  const leaderboardClient = window.BombDefuseLeaderboardClient;
+  const backendConfigured = leaderboardClient?.isConfigured?.() === true;
+  let activeMetric = "score";
+  let requestGeneration = 0;
+  let withdrawalPending = false;
+
+  function hasPublicOptIn() {
+    return isPublicLeaderboardOptInAllowed(profile?.privacy?.publicLeaderboard, profile?.consent?.publicLeaderboard);
+  }
+
+  function metricValue(metric) {
+    const personalBests = profile?.personalBests || {};
+    if (metric === "streak") return Math.max(0, Number(profile?.bestStreak || personalBests.bestStreak || 0));
+    return Math.max(0, Number(profile?.bestScore || personalBests.bestScore || 0));
+  }
+
+  function renderRows(rows) {
+    const list = byId("leaderboard-list");
+    const empty = byId("leaderboard-empty");
+    if (!list || !empty) return;
+    list.replaceChildren();
+    empty.hidden = rows.length > 0;
+    if (!rows.length) return;
+
+    rows.slice(0, 50).forEach(entry => {
+      const item = document.createElement("li");
+      item.className = "leaderboard-row";
+      const rank = document.createElement("span");
+      rank.className = "leaderboard-rank";
+      rank.textContent = `#${entry.rank}`;
+      const name = document.createElement("span");
+      name.className = "leaderboard-name";
+      name.textContent = entry.displayName;
+      const value = document.createElement("span");
+      value.className = "leaderboard-metric";
+      value.textContent = Number(entry.metric).toLocaleString();
+      item.append(rank, name, value);
+      list.append(item);
+    });
+  }
+
+  function render() {
+    const status = byId("leaderboard-status");
+    const scoreTab = byId("leaderboard-tab-score");
+    const streakTab = byId("leaderboard-tab-streak");
+    const rankPanel = byId("leaderboard-current-rank");
+    const copy = byId("leaderboard-opt-in-copy");
+    const optInButton = byId("btn-leaderboard-opt-in");
+    const submitStatus = byId("leaderboard-submit-status");
+    const withdrawRetry = byId("btn-leaderboard-withdraw-retry");
+    if (!status || !rankPanel || !copy || !optInButton || !submitStatus || !previewApi) return;
+    if (withdrawRetry) withdrawRetry.style.display = withdrawalPending ? "block" : "none";
+
+    [scoreTab, streakTab].forEach(tab => {
+      if (!tab) return;
+      const selected = tab.dataset.metric === activeMetric;
+      tab.classList.toggle("active", selected);
+      tab.setAttribute("aria-selected", String(selected));
+    });
+
+    const generation = ++requestGeneration;
+
+    const authenticated = AuthManager.isAuthenticated();
+    const optedIn = hasPublicOptIn();
+    if (!authenticated) {
+      copy.textContent = "Anyone can view this local preview. Sign in before opting in to a future public ranking. Guest records are never submitted.";
+      optInButton.textContent = "SIGN IN TO OPT IN";
+      optInButton.dataset.action = "signin";
+      optInButton.disabled = false;
+      submitStatus.textContent = "GLOBAL SUBMISSIONS ARE DISABLED UNTIL A TRUSTED SERVICE IS CONFIGURED.";
+    } else if (optedIn) {
+      copy.textContent = `You opted in to use “${profile.account.displayName}” as your public name when global rankings are available. Nothing is being published in this preview.`;
+      optInButton.textContent = "TURN PUBLIC OPT-IN OFF";
+      optInButton.dataset.action = "opt-out";
+      optInButton.disabled = false;
+      submitStatus.textContent = backendConfigured
+        ? "RANKED RUNS USE SERVER-VALIDATED CHALLENGES; NORMAL ENDLESS RUNS REMAIN LOCAL."
+        : "OPT-IN IS SAVED IN YOUR PRIVATE PROFILE; NO PUBLIC RECORD HAS BEEN SENT.";
+    } else {
+      copy.textContent = `Opt in to allow your display name (“${profile.account.displayName}”) and best Endless score/streak to appear publicly when a verified global leaderboard launches. No public record is created now.`;
+      optInButton.textContent = "OPT IN TO PUBLIC RANKING";
+      optInButton.dataset.action = "opt-in";
+      optInButton.disabled = false;
+      submitStatus.textContent = "NO PUBLIC LEADERBOARD ENTRY IS SENT. PRIVATE CLOUD-SAVE SYNC IS UNCHANGED.";
+    }
+
+    if (backendConfigured) {
+      status.textContent = "LOADING GLOBAL RANKINGS…";
+      rankPanel.textContent = !authenticated
+        ? "SIGN IN TO VIEW YOUR PRIVATE GLOBAL RANK. PUBLIC TOP 50 IS AVAILABLE TO GUESTS."
+        : (!optedIn ? "PUBLIC LEADERBOARD OPT-IN IS OFF. YOUR PRIVATE RANK IS NOT SHOWN." : "LOADING YOUR PRIVATE GLOBAL RANK…");
+      void loadGlobalData(activeMetric, generation, authenticated && optedIn);
+      return;
+    }
+
+    const online = typeof navigator === "undefined" || navigator.onLine !== false;
+    status.textContent = online
+      ? "SAMPLE DATA · LOCAL PREVIEW ONLY · GLOBAL SERVICE NOT CONFIGURED"
+      : "OFFLINE · LOCAL SAMPLE PREVIEW ONLY · NO GLOBAL REQUEST WAS MADE";
+    const rows = previewApi.createMockRows(activeMetric);
+    const value = metricValue(activeMetric);
+    renderRows(rows);
+    const currentRank = previewApi.getLocalPreviewRank(activeMetric, value);
+    rankPanel.textContent = currentRank
+      ? `YOUR DEVICE'S ${activeMetric === "score" ? "BEST SCORE" : "BEST STREAK"}: ${value.toLocaleString()} · SAMPLE POSITION #${currentRank} · NOT A GLOBAL RANK`
+      : "YOUR LOCAL RANK WILL APPEAR HERE AFTER AN ENDLESS RUN · PREVIEW ONLY";
+  }
+
+  async function loadGlobalData(metric, generation, showCurrentRank) {
+    const status = byId("leaderboard-status");
+    const rankPanel = byId("leaderboard-current-rank");
+    const empty = byId("leaderboard-empty");
+    try {
+      const response = metric === "score"
+        ? await leaderboardClient.getBestScore()
+        : await leaderboardClient.getBestStreak();
+      if (generation !== requestGeneration) return;
+      const rows = Array.isArray(response?.entries) ? response.entries : [];
+      if (empty) empty.textContent = rows.length ? "NO RECORDS YET" : "NO VERIFIED RECORDS YET";
+      renderRows(rows);
+      if (status) status.textContent = "GLOBAL LEADERBOARD · LIVE SERVER DATA";
+      if (showCurrentRank) {
+        const rankResponse = await leaderboardClient.getMyRank();
+        if (generation !== requestGeneration) return;
+        const personalRank = metric === "score" ? rankResponse?.bestScore : rankResponse?.bestStreak;
+        if (rankPanel) rankPanel.textContent = personalRank?.rank
+          ? `YOUR PRIVATE GLOBAL RANK: #${personalRank.rank} · ${Number(personalRank.metric).toLocaleString()}`
+          : "NO VERIFIED RECORD FOR YOUR ACCOUNT YET.";
+      } else if (rankPanel && AuthManager.isAuthenticated()) {
+        rankPanel.textContent = "PUBLIC OPT-IN IS OFF; YOUR PRIVATE RANK IS NOT SHOWN.";
+      }
+    } catch (error) {
+      if (generation !== requestGeneration) return;
+      renderRows([]);
+      if (empty) empty.textContent = "GLOBAL RANKINGS COULD NOT BE LOADED";
+      const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+      if (status) status.textContent = offline
+        ? "OFFLINE · GLOBAL RANKINGS UNAVAILABLE · RETRY WHEN CONNECTED"
+        : `GLOBAL RANKINGS UNAVAILABLE · ${String(error?.code || "REQUEST_FAILED").toUpperCase()}`;
+      if (rankPanel) rankPanel.textContent = "YOUR GLOBAL RANK IS UNAVAILABLE RIGHT NOW.";
+    }
+  }
+
+  async function setOptIn(enabled) {
+    const allowed = enabled === true && AuthManager.isAuthenticated();
+    profile.privacy.publicLeaderboard = allowed;
+    profile.consent.publicLeaderboard = allowed;
+    SaveManager.save(profile);
+    render();
+    if (!allowed && backendConfigured && AuthManager.isAuthenticated()) {
+      try {
+        await leaderboardClient.withdraw();
+        withdrawalPending = false;
+        const status = byId("leaderboard-submit-status");
+        if (status) status.textContent = "PUBLIC LEADERBOARD ENTRIES WITHDRAWN.";
+      } catch {
+        withdrawalPending = true;
+        const status = byId("leaderboard-submit-status");
+        if (status) status.textContent = "OPT-OUT SAVED. SERVER WITHDRAWAL FAILED; RETRY WHEN ONLINE.";
+        const retry = byId("btn-leaderboard-withdraw-retry");
+        if (retry) retry.style.display = "block";
+      }
+    }
+    return allowed;
+  }
+
+  async function retryWithdrawal() {
+    try {
+      await leaderboardClient?.withdraw?.();
+      withdrawalPending = false;
+      const status = byId("leaderboard-submit-status");
+      if (status) status.textContent = "PUBLIC LEADERBOARD ENTRIES WITHDRAWN.";
+    } catch {
+      withdrawalPending = true;
+      const status = byId("leaderboard-submit-status");
+      if (status) status.textContent = "WITHDRAWAL IS STILL PENDING. CHECK YOUR CONNECTION AND RETRY.";
+    }
+    const retry = byId("btn-leaderboard-withdraw-retry");
+    if (retry) retry.style.display = withdrawalPending ? "block" : "none";
+    return !withdrawalPending;
+  }
+
+  function open() {
+    activeMetric = "score";
+    render();
+    showScreen("leaderboard");
+  }
+
+  function selectMetric(metric) {
+    if (metric !== "score" && metric !== "streak") return;
+    activeMetric = metric;
+    render();
+  }
+
+  return Object.freeze({ open, render, setOptIn, hasPublicOptIn, selectMetric, retryWithdrawal });
+})();
+
 /* =========================================================
    GAME CONTROLLER & LOOP
 ========================================================= */
-function startGame() {
+function resetEndlessAtmosphere() {
+  if (!screens.game) return;
+  screens.game.style.setProperty("--danger-level", "0");
+  screens.game.classList.remove("danger-warning", "danger-danger", "danger-critical");
+  screens.game.classList.add("danger-safe");
+}
+
+function finalizePreviousRankedRun() {
+  const previousRun = run;
+  if (previousRun?.ranked && !previousRun.ranked.finalized && !previousRun.ranked.unavailable) {
+    void finalizeRankedRun(previousRun);
+  }
+}
+
+async function startGame() {
+  if (startGamePending) return;
+  startGamePending = true;
+  finalizePreviousRankedRun();
   clearPendingTransitions();
   Timer.stop();
   PowerManager.cleanup();
@@ -8840,17 +9118,54 @@ function startGame() {
   run = newRun();
   run.analyticsAttemptId = AnalyticsManager.beginAttempt();
   state = "PLAYING";
-  if (screens.game) {
-    screens.game.style.setProperty("--danger-level", "0");
-    screens.game.classList.remove("danger-warning", "danger-danger", "danger-critical");
-    screens.game.classList.add("danger-safe");
-  }
+  resetEndlessAtmosphere();
   if (el.dailyHudBanner) el.dailyHudBanner.style.display = "none";
   if (el.hudTimeBank) el.hudTimeBank.style.display = "none";
   showScreen("game");
+  if (window.BombDefuseLeaderboardClient?.isConfigured?.() !== true) {
+    run.leaderboardMode = "unranked";
+    updateHud();
+    updatePowerUI();
+    nextBomb();
+    startGamePending = false;
+    return;
+  }
+  const activeRun = run;
+  const rankedClient = window.BombDefuseLeaderboardClient;
+  const explicitOptIn = profile?.privacy?.publicLeaderboard === true && profile?.consent?.publicLeaderboard === true;
+  const signedInOwnerMatches = AuthManager.isAuthenticated() &&
+    FirebaseManager.getCurrentUser()?.uid === profile?.account?.userId;
+  run.leaderboardMode = "unranked";
+  if (!(rankedClient?.isConfigured?.() === true && explicitOptIn && signedInOwnerMatches)) {
+    showToast("UNRANKED RUN · LOCAL RESULTS ONLY", "neutral", 2800);
+    updateHud();
+    updatePowerUI();
+    nextBomb();
+    startGamePending = false;
+    return;
+  }
+  run.inputLocked = true;
+  if (el.instruction) el.instruction.textContent = "CONNECTING TO RANKED RUN SERVER...";
+  try {
+    const started = await rankedClient.beginRun();
+    if (run !== activeRun || state !== "PLAYING") { startGamePending = false; return; }
+    if (!started?.runId || !started?.challenge || started.powerUpsAllowed !== false) {
+      throw new Error("Ranked run challenge response was invalid.");
+    }
+    gameMode = "RANKED";
+    run.leaderboardMode = "ranked";
+    run.ranked = { runId: started.runId, sequence: started.sequence, challenge: started.challenge, pending: false };
+    run.inputLocked = false;
+  } catch {
+    if (run !== activeRun || state !== "PLAYING") { startGamePending = false; return; }
+    run.inputLocked = false;
+    showToast("RANKED SERVICE UNAVAILABLE · THIS RUN IS UNRANKED", "neutral", 4000);
+  }
+  if (run !== activeRun || state !== "PLAYING") { startGamePending = false; return; }
   updateHud();
   updatePowerUI();
   nextBomb();
+  startGamePending = false;
 }
 
 function startDailyChallenge() {
@@ -8917,7 +9232,23 @@ function nextBomb() {
   run.inputLocked = false;
   if (el.hudTimeBank) el.hudTimeBank.style.display = "none";
 
-  if (gameMode === "DAILY") {
+  if (gameMode === "RANKED") {
+    const ranked = run.ranked?.challenge;
+    if (!ranked || !Array.isArray(ranked.wires) || !ranked.challengeId) {
+      void interruptRankedRun("RANKED CHALLENGE UNAVAILABLE");
+      return;
+    }
+    run.bombNumber = ranked.bombNumber;
+    run.difficulty = ranked.difficulty;
+    run.bomb = {
+      number: ranked.bombNumber,
+      wires: ranked.wires.map(wire => ({ ...wire, cut: false })),
+      time: ranked.timeLimitSeconds,
+      challenge: { type: "ranked", text: ranked.instruction },
+      phases: [], currentPhaseIndex: 0, totalPhases: 1, event: null,
+    };
+    el.hudBombLabel.textContent = `RANKED BOMB ${run.bombNumber}`;
+  } else if (gameMode === "DAILY") {
     if (!cachedDailyChallenge) {
       cachedDailyChallenge = DailyChallengeManager.generateDailyChallenge();
     }
@@ -8996,7 +9327,11 @@ function nextBomb() {
   }
 
   later(() => { if (state === "PLAYING" && !PowerManager.isFrozen && !PowerManager.isSlowed) setBombStatus("ARMED"); }, 180);
-  Timer.start(run.bomb.time, renderTimer, () => explode("TIME'S UP!"));
+  if (gameMode === "RANKED") {
+    Timer.start(run.bomb.time, renderTimer, () => { void submitRankedWire(-1, null, 0, 0); });
+  } else {
+    Timer.start(run.bomb.time, renderTimer, () => explode("TIME'S UP!"));
+  }
 }
 
 function renderWires(wires) {
@@ -9055,6 +9390,11 @@ function cutWire(index, wireEl) {
   wireEl.classList.add("pressed", "cut");
   run.bomb.wires[index].cut = true;
   AudioManager.playWireCut();
+
+  if (gameMode === "RANKED") {
+    void submitRankedWire(index, wireEl, x, y);
+    return;
+  }
 
   if (index === run.bomb.challenge.answerIndex) {
     if (run.bomb.currentPhaseIndex < run.bomb.totalPhases - 1) {
@@ -9327,7 +9667,28 @@ function explode(reason, wireEl, x, y) {
   }
 }
 
-function endGame(reason) {
+async function finalizeRankedRun(targetRun = run) {
+  if (!targetRun?.ranked || targetRun.ranked.unavailable || !window.BombDefuseLeaderboardClient?.finishRun) return null;
+  if (targetRun.ranked.finishPromise) return targetRun.ranked.finishPromise;
+  targetRun.ranked.finishPromise = window.BombDefuseLeaderboardClient.finishRun({
+    runId: targetRun.ranked.runId,
+    sequence: targetRun.ranked.sequence,
+  }).then(result => {
+    targetRun.ranked.finalized = true;
+    targetRun.ranked.finalResult = result;
+    return result;
+  }).catch(() => {
+    targetRun.ranked.unavailable = true;
+    return null;
+  });
+  return targetRun.ranked.finishPromise;
+}
+
+async function endGame(reason) {
+  const endingRun = run;
+  let rankedResult = null;
+  if (endingRun?.ranked && !endingRun.ranked.unavailable) rankedResult = await finalizeRankedRun(endingRun);
+  if (run !== endingRun) return;
   const prevBest = profile.bestScore;
   profile.bestScore = Math.max(profile.bestScore, run.score);
   profile.bestStreak = Math.max(profile.bestStreak, run.bestStreak);
@@ -9353,7 +9714,13 @@ function endGame(reason) {
 
   // Dynamic comparison message
   if (el.resultComparisonText) {
-    if (isNewRecord) {
+    if (endingRun?.ranked) {
+      el.resultComparisonText.textContent = rankedResult?.finalized
+        ? "SERVER-VERIFIED RUN · GLOBAL SCORE AND STREAK SUBMITTED"
+        : "UNRANKED RESULT · SERVER VALIDATION OR SUBMISSION FAILED";
+    } else if (endingRun?.leaderboardMode === "unranked") {
+      el.resultComparisonText.textContent = "UNRANKED RUN · LOCAL RESULT ONLY · NOT SUBMITTED GLOBALLY";
+    } else if (isNewRecord) {
       el.resultComparisonText.textContent = `🌟 NEW ALL-TIME BEST! (+${run.score.toLocaleString()} PTS)`;
     } else if (run.score > profile.bestScore * 0.8 && profile.bestScore > 0) {
       const pct = Math.round((run.score / profile.bestScore) * 100);
@@ -9366,6 +9733,135 @@ function endGame(reason) {
 
   state = "RESULT";
   showScreen("result");
+  if (el.btnReviveResult) {
+    const canOfferRevive = gameMode === "NORMAL" && !run.rewardReviveUsed &&
+      window.BombDefuseAdMobService?.canOfferRevive?.() === true;
+    el.btnReviveResult.style.display = canOfferRevive ? "block" : "none";
+    el.btnReviveResult.disabled = false;
+  }
+}
+
+async function submitRankedWire(wireIndex, wireEl, x, y) {
+  if (gameMode !== "RANKED" || state !== "PLAYING" || !run?.ranked || run.ranked.pending) return false;
+  const activeRun = run;
+  const action = {
+    runId: activeRun.ranked.runId,
+    sequence: activeRun.ranked.sequence,
+    challengeId: activeRun.ranked.challenge.challengeId,
+    wireIndex,
+  };
+  activeRun.ranked.pending = true;
+  activeRun.inputLocked = true;
+  Timer.stop();
+
+  let result;
+  try {
+    result = await window.BombDefuseLeaderboardClient.submitRunAction(action);
+  } catch {
+    // The action is idempotent by server challenge ID. Retry once to recover a
+    // response lost after a transaction committed; never infer success locally.
+    try { result = await window.BombDefuseLeaderboardClient.submitRunAction(action); }
+    catch { return interruptRankedRun("RANKED RUN COULD NOT BE VERIFIED"); }
+  }
+  if (run !== activeRun || gameMode !== "RANKED") return false;
+  activeRun.ranked.pending = false;
+  if (!result?.accepted || typeof result.score !== "number" || typeof result.bestStreak !== "number") {
+    return interruptRankedRun("RANKED RUN COULD NOT BE VERIFIED");
+  }
+  activeRun.score = result.score;
+  activeRun.streak = result.streak;
+  activeRun.bestStreak = result.bestStreak;
+  activeRun.bombsDefused = result.bombsDefused;
+  activeRun.ranked.sequence = result.sequence;
+
+  if (!result.correct) {
+    if (wireEl) wireEl.classList.add("wrong-flash", "failure-wire");
+    explode(result.reason === "TIME_EXPIRED" || result.reason === "RUN_FORFEITED" ? "TIME'S UP!" : "WRONG WIRE!", wireEl, x, y);
+    return true;
+  }
+
+  const points = Number.isSafeInteger(result.points) ? result.points : 0;
+  const coins = 0;
+  activeRun.bombsDefused = result.bombsDefused;
+  activeRun.lastAnswerIndex = wireIndex;
+  if (wireEl) wireEl.classList.add("correct-flash", "success-wire");
+  if (el.bomb) el.bomb.classList.add("success-pulse");
+  setBombStatus("SUCCESS");
+  AudioManager.playDefuseSuccess();
+  HapticsManager.cutSuccess();
+  showFloatingText(`+${points}`);
+  showStreakFeedback(activeRun.streak);
+  updateHud();
+  updatePowerUI();
+  StatsManager.recordDefuse({ bombNumber: activeRun.bombNumber, ruleType: "ranked", timeRemaining: 0, totalTime: activeRun.bomb.time, streak: activeRun.streak, score: points, coins });
+  AchievementManager.onBombDefused({ bombNumber: activeRun.bombNumber, ruleType: "ranked", timeRemaining: 0, totalTime: activeRun.bomb.time, streak: activeRun.streak, powerUsedThisRun: false });
+
+  if (result.terminal) {
+    activeRun.ranked.serverTerminal = true;
+    endGame("RANKED RUN COMPLETE");
+    return true;
+  }
+
+  activeRun.ranked.challenge = result.challenge;
+  activeRun.bombNumber = result.challenge.bombNumber;
+  later(() => {
+    if (run !== activeRun || gameMode !== "RANKED") return;
+    activeRun.inputLocked = false;
+    state = "PLAYING";
+    nextBomb();
+  }, 360);
+  return true;
+}
+
+async function interruptRankedRun(message) {
+  if (gameMode !== "RANKED" || !run) return false;
+  Timer.stop();
+  const interruptedRun = run;
+  interruptedRun.ranked.unavailable = true;
+  interruptedRun.leaderboardMode = "unranked";
+  interruptedRun.inputLocked = true;
+  gameMode = "NORMAL";
+  showToast(`${message} · RESULT IS UNRANKED`, "danger", 4500);
+  endGame("RANKED RUN INTERRUPTED · UNRANKED");
+  return false;
+}
+
+async function requestEndlessRevive() {
+  if (state !== "RESULT" || gameMode !== "NORMAL" || !run || run.rewardReviveUsed) return false;
+  const failedRun = run;
+  const button = el.btnReviveResult;
+  if (!window.BombDefuseAdMobService?.canOfferRevive?.()) return false;
+
+  if (button) button.disabled = true;
+  const earned = await window.BombDefuseAdMobService.watchRewardedRevive();
+  if (!earned || run !== failedRun || state !== "RESULT" || failedRun.rewardReviveUsed) {
+    if (button && state === "RESULT" && run === failedRun) button.disabled = false;
+    if (state === "RESULT" && run === failedRun) showToast("REVIVE NOT EARNED · END RUN OR TRY AGAIN", "neutral", 3500);
+    return false;
+  }
+
+  failedRun.rewardReviveUsed = true;
+  failedRun.inputLocked = false;
+  failedRun.bomb.wires.forEach(wire => { wire.cut = false; });
+  PowerManager.cleanup();
+  if (el.bomb) el.bomb.classList.remove("exploding", "shaking", "success-pulse", "failure-pulse", "pcb-pulse-phase");
+  if (screens.game) {
+    screens.game.classList.remove("danger-warning", "danger-danger", "danger-critical");
+    screens.game.classList.add("danger-safe");
+  }
+  setBombStatus("ARMING");
+  el.instruction.textContent = failedRun.bomb.totalPhases > 1
+    ? `PHASE ${failedRun.bomb.currentPhaseIndex + 1}/${failedRun.bomb.totalPhases} · ${failedRun.bomb.challenge.text}`
+    : failedRun.bomb.challenge.text;
+  renderWires(failedRun.bomb.wires);
+  updateHud();
+  updatePowerUI();
+  showScreen("game");
+  later(() => { if (state === "PLAYING") setBombStatus("ARMED"); }, 180);
+  state = "PLAYING";
+  Timer.start(failedRun.bomb.time, renderTimer, () => explode("TIME'S UP!"));
+  showToast("REVIVE EARNED · SAME BOMB RESTORED", "success", 3500);
+  return true;
 }
 
 function finishDailyChallenge(isVictory, failureReason = "WRONG WIRE") {
@@ -9616,6 +10112,7 @@ function updateSoundUI() {
 
 function updatePowerUI() {
   const isPlaying = state === "PLAYING" && run && !run.inputLocked;
+  const ranked = gameMode === "RANKED";
   Object.keys(PowerDefinitions).forEach(id => {
     const btn = byId(`btn-power-${id}`);
     const badge = byId(`badge-${id}`);
@@ -9623,8 +10120,9 @@ function updatePowerUI() {
     const def = PowerDefinitions[id];
     if (badge) badge.textContent = String(count);
     if (btn) {
-      btn.disabled = !isPlaying || count <= 0;
-      btn.classList.toggle("is-disabled", !isPlaying || count <= 0);
+      btn.hidden = ranked;
+      btn.disabled = ranked || !isPlaying || count <= 0;
+      btn.classList.toggle("is-disabled", ranked || !isPlaying || count <= 0);
       const isChanceActive = id === "secondChance" && PowerManager.hasActiveSecondChance();
       const isFreezeActive = id === "timeFreeze" && PowerManager.isFrozen;
       const isSlowActive = id === "timeSlow" && PowerManager.isSlowed;
@@ -9821,6 +10319,13 @@ function resumeGame() {
 }
 
 function returnToMenu() {
+  if (gameMode === "RANKED" && run?.ranked?.pending) {
+    showToast("WAIT FOR THE RANKED SERVER RESPONSE BEFORE EXITING", "neutral", 3000);
+    return;
+  }
+  if (gameMode === "RANKED" && run?.ranked && !run.ranked.finalized && !run.ranked.unavailable) {
+    void finalizeRankedRun(run);
+  }
   clearPendingTransitions();
   Timer.stop();
   PowerManager.cleanup();
@@ -9831,6 +10336,7 @@ function returnToMenu() {
   }
   if (el.dailyHudBanner) el.dailyHudBanner.style.display = "none";
   state = "MENU";
+  gameMode = "NORMAL";
   refreshPersistentUI();
   DailyGoalsManager.updateBadge();
   showScreen("menu");
@@ -9953,6 +10459,7 @@ byId("btn-confirm-reset").addEventListener("click", () => {
   PowerManager.cleanup();
   AchievementToastManager.reset();
   profile = SaveManager.reset();
+  void window.BombDefuseAdMobService?.setPersonalizedAdsPreference(false);
   AnalyticsManager.refreshConsent();
   SentryCrashReportingManager.refreshConsent();
   void NativeCrashlyticsConsentManager.refreshConsent();
@@ -9977,6 +10484,9 @@ byId("btn-restart-pause").addEventListener("click", () => {
 byId("btn-menu-pause").addEventListener("click", returnToMenu);
 byId("btn-play-again").addEventListener("click", startGame);
 byId("btn-menu-result").addEventListener("click", returnToMenu);
+if (el.btnReviveResult) {
+  el.btnReviveResult.addEventListener("click", () => { void requestEndlessRevive(); });
+}
 
 // Campaign event listeners
 if (byId("btn-campaign")) {
@@ -10081,12 +10591,21 @@ if (byId("btn-start-campaign-level")) {
   });
 }
 
+let campaignNextTransitionInProgress = false;
 if (byId("btn-campaign-next-level")) {
   byId("btn-campaign-next-level").addEventListener("click", async () => {
+    if (campaignNextTransitionInProgress) return;
     const nextLevel = (campaignCurrentLevel || 1) + 1;
     if (CampaignConfig.levels[nextLevel] && profile.campaign?.unlockedLevels?.includes(nextLevel)) {
-      await window.BombDefuseAdMobService?.showInterstitialAtTransition();
-      CampaignManager.openBriefing(nextLevel);
+      campaignNextTransitionInProgress = true;
+      byId("btn-campaign-next-level").disabled = true;
+      try {
+        await window.BombDefuseAdMobService?.showInterstitialAtTransition();
+        CampaignManager.openBriefing(nextLevel);
+      } finally {
+        campaignNextTransitionInProgress = false;
+        byId("btn-campaign-next-level").disabled = false;
+      }
     } else {
       CampaignManager.openLevelSelect();
     }
@@ -10222,6 +10741,49 @@ if (byId("btn-install")) {
 }
 
 // Phase 8: Stats, Goals, Login Rewards, Share Event Handlers
+if (byId("btn-open-leaderboard")) {
+  byId("btn-open-leaderboard").addEventListener("click", () => EndlessLeaderboardUI.open());
+}
+if (byId("btn-back-leaderboard")) {
+  byId("btn-back-leaderboard").addEventListener("click", returnToMenu);
+}
+if (byId("leaderboard-tab-score")) {
+  byId("leaderboard-tab-score").addEventListener("click", () => EndlessLeaderboardUI.selectMetric("score"));
+}
+if (byId("leaderboard-tab-streak")) {
+  byId("leaderboard-tab-streak").addEventListener("click", () => EndlessLeaderboardUI.selectMetric("streak"));
+}
+if (byId("btn-leaderboard-opt-in")) {
+  byId("btn-leaderboard-opt-in").addEventListener("click", () => {
+    const action = byId("btn-leaderboard-opt-in").dataset.action;
+    if (action === "signin") {
+      showScreen("login");
+      return;
+    }
+    void EndlessLeaderboardUI.setOptIn(action === "opt-in");
+  });
+}
+if (byId("btn-leaderboard-withdraw-retry")) {
+  byId("btn-leaderboard-withdraw-retry").addEventListener("click", async () => {
+    const button = byId("btn-leaderboard-withdraw-retry");
+    button.disabled = true;
+    try {
+      await EndlessLeaderboardUI.retryWithdrawal();
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+if (byId("btn-leaderboard-retry")) {
+  byId("btn-leaderboard-retry").addEventListener("click", () => {
+    const status = byId("leaderboard-status");
+    if (status) status.textContent = "REFRESHING LOCAL PREVIEW…";
+    EndlessLeaderboardUI.render();
+  });
+}
+window.addEventListener("online", () => EndlessLeaderboardUI.render());
+window.addEventListener("offline", () => EndlessLeaderboardUI.render());
+
 if (byId("btn-back-stats")) {
   byId("btn-back-stats").addEventListener("click", returnToMenu);
 }
@@ -10752,17 +11314,23 @@ if (byId("btn-toggle-crash-reporting")) {
 
 if (byId("btn-toggle-ads")) {
   byId("btn-toggle-ads").addEventListener("click", () => {
-    const current = Boolean(profile.privacy?.personalizedAds);
+    const current = ConsentManager.hasConsent("personalizedAds");
     ConsentManager.setConsent("personalizedAds", !current);
     AccountSettingsUI.render();
-    showToast(`PERSONALIZED ADS ${!current ? "ENABLED" : "DISABLED"}`, "neutral");
+    showToast(`AD PERSONALIZATION PREFERENCE ${!current ? "ON" : "OFF"}`, "neutral");
   });
 }
 
 if (byId("btn-manage-ad-privacy")) {
   byId("btn-manage-ad-privacy").addEventListener("click", async () => {
-    const available = await window.BombDefuseAdMobService?.showPrivacyOptions();
-    if (!available) showToast("AD PRIVACY OPTIONS ARE NOT AVAILABLE RIGHT NOW", "neutral");
+    const result = await window.BombDefuseAdMobService?.showPrivacyOptions();
+    if (result?.refreshFailed) {
+      showToast("AD PRIVACY COULD NOT BE REFRESHED; ADS ARE PAUSED", "neutral", 4500);
+    } else if (!result?.shown) {
+      showToast("AD PRIVACY OPTIONS ARE NOT AVAILABLE RIGHT NOW", "neutral");
+    } else if (!result.canRequestAds) {
+      showToast("PRIVACY FORM CLOSED; NO ADS WILL BE REQUESTED", "neutral", 4000);
+    }
   });
 }
 
@@ -10914,7 +11482,7 @@ refreshPersistentUI();
 updateMenuAccountBadge();
 DailyGoalsManager.updateBadge();
 showScreen("menu");
-void window.BombDefuseAdMobService?.initializeAtLaunch();
+void window.BombDefuseAdMobService?.initializeAtLaunch(ConsentManager.hasConsent("personalizedAds"));
 LoginRewardManager.checkAndShowOnMenu();
 
 

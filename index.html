@@ -130,6 +130,7 @@
           <span class="stat-value" id="menu-best-streak">0</span>
         </div>
       </div>
+      <button id="btn-open-leaderboard" class="btn btn-ghost leaderboard-menu-button" type="button">GLOBAL ENDLESS LEADERBOARD</button>
     </div>
   </section>
 
@@ -547,13 +548,14 @@
         </div>
       </div>
 
+      <button id="btn-revive-result" class="btn btn-secondary result-revive-button" type="button" style="display: none;" aria-label="Watch a test ad to revive once">WATCH TEST AD TO REVIVE</button>
       <div class="result-actions-grid">
         <button id="btn-play-again" class="btn btn-primary">PLAY AGAIN</button>
         <button id="btn-share-result" class="btn btn-secondary btn-share" aria-label="Share result to friends">📤 SHARE RESULT</button>
       </div>
       <div class="result-secondary-actions">
         <button id="btn-result-shop" class="btn btn-ghost">SHOP</button>
-        <button id="btn-menu-result" class="btn btn-ghost">MENU</button>
+        <button id="btn-menu-result" class="btn btn-ghost">END RUN</button>
       </div>
     </div>
   </section>
@@ -969,6 +971,46 @@
       </div>
 
       <button id="btn-back-stats" class="btn btn-ghost">BACK</button>
+    </div>
+  </section>
+
+  <!-- ================= ENDLESS LEADERBOARD PREVIEW ================= -->
+  <section id="screen-leaderboard" class="screen" aria-labelledby="leaderboard-title">
+    <div class="menu-inner leaderboard-inner">
+      <header class="leaderboard-header">
+        <span class="chapter-badge">LOCAL PREVIEW · NOT GLOBAL</span>
+        <h1 class="title" id="leaderboard-title">ENDLESS RUN LEADERBOARD</h1>
+        <p class="leaderboard-intro">Synthetic sample entries only. This screen makes no leaderboard request; normal private cloud-save sync remains unchanged.</p>
+      </header>
+
+      <div id="leaderboard-status" class="leaderboard-status" role="status" aria-live="polite">Loading local preview…</div>
+
+      <div class="leaderboard-tabs" role="tablist" aria-label="Leaderboard metric">
+        <button id="leaderboard-tab-score" class="leaderboard-tab active" type="button" role="tab" aria-selected="true" aria-controls="leaderboard-list" data-metric="score">BEST SCORE</button>
+        <button id="leaderboard-tab-streak" class="leaderboard-tab" type="button" role="tab" aria-selected="false" aria-controls="leaderboard-list" data-metric="streak">BEST STREAK</button>
+      </div>
+
+      <div id="leaderboard-current-rank" class="leaderboard-current-rank" aria-live="polite"></div>
+      <div class="leaderboard-table-wrap">
+        <ol id="leaderboard-list" class="leaderboard-list" role="list" aria-label="Top 50 preview rankings"></ol>
+        <div id="leaderboard-empty" class="leaderboard-empty" role="status" hidden>NO RECORDS YET</div>
+      </div>
+
+      <section class="leaderboard-opt-in-card" aria-labelledby="leaderboard-opt-in-title">
+        <div>
+          <span class="stats-section-title">PUBLIC RECORD PRIVACY</span>
+          <h2 id="leaderboard-opt-in-title">LEADERBOARD OPT-IN</h2>
+          <p id="leaderboard-opt-in-copy"></p>
+        </div>
+        <button id="btn-leaderboard-opt-in" class="btn btn-secondary" type="button">SIGN IN TO OPT IN</button>
+        <button id="btn-leaderboard-withdraw-retry" class="btn btn-ghost" type="button" style="display: none;">RETRY PUBLIC ENTRY WITHDRAWAL</button>
+        <p id="leaderboard-submit-status" class="leaderboard-submit-status" role="status"></p>
+      </section>
+
+      <div class="leaderboard-actions">
+        <button id="btn-leaderboard-retry" class="btn btn-ghost" type="button">RETRY PREVIEW</button>
+        <button id="btn-back-leaderboard" class="btn btn-ghost" type="button">BACK</button>
+      </div>
     </div>
   </section>
 
@@ -1394,7 +1436,7 @@
           <div class="settings-row">
             <div class="settings-row-copy">
               <span class="settings-row-label">PERSONALIZED ADS</span>
-              <span class="settings-row-desc">Currently disabled in release build.</span>
+              <span class="settings-row-desc">Ads are test-only in Android debug builds. OFF requests non-personalized ads where supported. ON allows personalization only when UMP permits it; this preference is not consent.</span>
             </div>
             <button id="btn-toggle-ads" class="toggle-btn" type="button" aria-label="Toggle personalized advertising">OFF</button>
           </div>
@@ -1501,6 +1543,9 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="leaderboard-config.js"></script>
+<script src="scripts/leaderboard-preview.js"></script>
+<script src="scripts/leaderboard-client.js"></script>
 <script src="script.js"></script>
 </body>
 </html>

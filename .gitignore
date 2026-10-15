@@ -39,6 +39,13 @@ coverage/
 # Local testing
 .playwright/
 test-results/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+.firebase/
+functions/.env
+functions/.env.*
+!functions/.env.example
 # Local QA / development scripts
 scratch/
 *.pyc

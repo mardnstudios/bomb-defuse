@@ -9,9 +9,12 @@ const runtimeFiles = [
   "index.html",
   "styles.css",
   "script.js",
+  "leaderboard-config.js",
   "manifest.json",
   "favicon.svg",
   "service-worker.js",
+  "scripts/leaderboard-preview.js",
+  "scripts/leaderboard-client.js",
   "icons/icon-192.svg",
   "icons/icon-512.svg",
 ];
@@ -86,7 +89,7 @@ if (occurrences !== 1) {
 }
 const updatedIndex = distIndex.replace(
   appScriptTag,
-  '<script src="./capacitor-build-config.js"></script>\n<script src="./native-crashlytics-bridge.js"></script>\n<script src="./native-admob-service.js"></script>\n<script src="script.js"></script>',
+  '<script src="./capacitor-build-config.js"></script>\n<script src="./native-crashlytics-bridge.js"></script>\n<script src="./native-admob-service.js"></script>\n<script src="scripts/leaderboard-preview.js"></script>\n<script src="script.js"></script>',
 );
 await writeFile(distIndexPath, updatedIndex, "utf8");
 

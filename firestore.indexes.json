@@ -1,0 +1,21 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "endlessLeaderboardScores",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "metric", "order": "DESCENDING" },
+        { "fieldPath": "publicEntryId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "endlessLeaderboardStreaks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "metric", "order": "DESCENDING" },
+        { "fieldPath": "publicEntryId", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

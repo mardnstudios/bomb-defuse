@@ -1,0 +1,33 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Mirrors the currently reported private cloud-save rule for local emulator use.
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Leaderboard data is accessed through callable Functions only. Admin SDK
+    // functions bypass rules; public clients cannot read/write these documents.
+    match /endlessLeaderboardScores/{entryId} {
+      allow read, write: if false;
+    }
+    match /endlessLeaderboardStreaks/{entryId} {
+      allow read, write: if false;
+    }
+    match /leaderboardPrivateOwners/{uid} {
+      allow read, write: if false;
+    }
+    match /leaderboardRateLimits/{uid} {
+      allow read, write: if false;
+    }
+    match /leaderboardRunChallenges/{path=**} {
+      allow read, write: if false;
+    }
+    match /leaderboardRuns/{path=**} {
+      allow read, write: if false;
+    }
+    match /leaderboardSubmissions/{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

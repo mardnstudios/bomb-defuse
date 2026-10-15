@@ -1,11 +1,14 @@
 /* Bomb Defuse — Lightweight Offline Service Worker */
 
-const CACHE_NAME = "bomb-defuse-v2";
+const CACHE_NAME = "bomb-defuse-v3";
 const ASSETS_TO_CACHE = [
   "./",
   "./index.html",
   "./styles.css",
   "./script.js",
+  "./leaderboard-config.js",
+  "./scripts/leaderboard-client.js",
+  "./scripts/leaderboard-preview.js",
   "./manifest.json",
   "./favicon.svg",
   "./icons/icon-192.svg",
